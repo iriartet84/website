@@ -22,9 +22,9 @@ export async function POST(request: NextRequest) {
   const formData = await request.formData()
   const kind = formData.get("kind")
   if (kind === "project") {
-    await createProjectAction(formData)
+  await createProjectAction({}, formData)
   } else {
-    await createPaperAction(formData)
+  await createPaperAction({}, formData)
   }
   return NextResponse.json({ ok: true })
 }

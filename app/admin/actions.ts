@@ -25,7 +25,7 @@ export type ActionState = { error?: string }
 
 function errorMessage(error: unknown): string {
   if (error instanceof ZodError) {
-    return error.errors.map((e) => e.message).join(", ")
+  return error.issues.map((e) => e.message).join(", ")
   }
   if (error instanceof Error) {
     return error.message

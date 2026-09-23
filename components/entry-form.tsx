@@ -40,12 +40,19 @@ export function EntryForm({
 
   async function save(formData: FormData) {
     if (kind === 'paper') {
-      if (entryId) await updatePaperAction(entryId, formData)
-      else await createPaperAction(formData)
+      if (entryId) {
+        await updatePaperAction(entryId, {}, formData)
+      } else {
+        await createPaperAction({}, formData)
+      }
       return
     }
-    if (entryId) await updateProjectAction(entryId, formData)
-    else await createProjectAction(formData)
+
+    if (entryId) {
+      await updateProjectAction(entryId, {}, formData)
+    } else {
+      await createProjectAction({}, formData)
+    }
   }
 
   return (
