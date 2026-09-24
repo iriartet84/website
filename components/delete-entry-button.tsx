@@ -1,19 +1,25 @@
 'use client'
 
 import { deletePaperAction, deleteProjectAction } from '@/app/admin/actions'
-import { deleteExperienceAction } from '@/app/admin/cv-actions'
+import {
+  deleteExperienceAction,
+  deleteEducationAction,
+  deleteLanguageAction,
+} from '@/app/admin/cv-actions'
 
 export function DeleteEntryButton({
   kind,
   id,
 }: {
-  kind: 'paper' | 'project' | 'experience'
+  kind: 'paper' | 'project' | 'experience' | 'education' | 'language'
   id: number
 }) {
   async function onDelete() {
     if (kind === 'paper') await deletePaperAction(id)
     else if (kind === 'project') await deleteProjectAction(id)
-    else await deleteExperienceAction(id)
+    else if (kind === 'experience') await deleteExperienceAction(id)
+    else if (kind === 'education') await deleteEducationAction(id)
+    else await deleteLanguageAction(id)
   }
 
   return (

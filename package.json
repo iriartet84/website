@@ -10,6 +10,7 @@
     "lint": "tsc --noEmit",
     "db:push": "drizzle-kit push",
     "db:migrate": "drizzle-kit migrate",
+    "db:seed": "node --env-file=.env.local --import tsx scripts/seed-from-content.ts",
     "create-admin": "node scripts/create-admin.mjs"
   },
   "dependencies": {
@@ -35,6 +36,8 @@
     "@netlify/plugin-nextjs": "^5.16.0",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "^24",
+    "dotenv": "^17.4.2",
+    "tsx": "^4.19.2",
     "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",

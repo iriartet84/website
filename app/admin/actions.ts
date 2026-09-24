@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 import { eq } from "drizzle-orm"
-import { ZodError } from "zod"
 import { db } from "@/lib/db"
 import { paperEntries, projectEntries } from "@/lib/db/schema"
 import { requireAdmin } from "@/lib/require-admin"
@@ -14,6 +13,7 @@ import {
   entryInputSchema,
   parseTags,
 } from "@/lib/validations"
+import { errorMessage } from "@/lib/action-error"
 
 // Shape returned to the client on failure. Server Actions used with
 // useActionState/useFormState should return this instead of throwing for
@@ -22,16 +22,6 @@ import {
 // a generic message + digest in production builds, so throwing here would
 // silently swallow the compiler's actual error text.
 export type ActionState = { error?: string }
-
-function errorMessage(error: unknown): string {
-  if (error instanceof ZodError) {
-  return error.issues.map((e) => e.message).join(", ")
-  }
-  if (error instanceof Error) {
-    return error.message
-  }
-  return "Something went wrong. Please try again."
-}
 
 async function resolvePdf(formData: FormData) {
   const contentType = String(formData.get("contentType") ?? "pdf")
@@ -73,6 +63,7 @@ function fieldsFrom(formData: FormData) {
     status: formData.get("status") ?? undefined,
     kind: formData.get("kind") ?? undefined,
     latexSource: formData.get("latexSource") ?? undefined,
+    sortOrder: formData.get("sortOrder") ?? 0,
     published: formData.get("published") === "on",
   })
   const date = new Date(parsed.date)
@@ -122,6 +113,7 @@ export async function createPaperAction(
       pdfPathname: pdf.key,
       pdfFilename: pdf.filename,
       latexSource: pdf.latexSource,
+      sortOrder: fields.sortOrder,
       published: fields.published ?? true,
     })
 
@@ -163,6 +155,7 @@ export async function updatePaperAction(
       tags: fields.tags,
       methods: fields.tags,
       contentType: fields.contentType,
+      sortOrder: fields.sortOrder,
       published: fields.published ?? true,
       updatedAt: new Date(),
     }
@@ -219,6 +212,7 @@ export async function createProjectAction(
       pdfPathname: pdf.key,
       pdfFilename: pdf.filename,
       latexSource: pdf.latexSource,
+      sortOrder: fields.sortOrder,
       published: fields.published ?? true,
     })
 
@@ -256,6 +250,7 @@ export async function updateProjectAction(
       status: fields.status ?? "In progress",
       kind: fields.kind ?? "dashboard",
       contentType: fields.contentType,
+      sortOrder: fields.sortOrder,
       published: fields.published ?? true,
       updatedAt: new Date(),
     }

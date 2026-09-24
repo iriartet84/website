@@ -112,6 +112,53 @@ export const experienceEntries = pgTable("experience_entries", {
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
 })
 
+export const educationEntries = pgTable("education_entries", {
+  id: serial("id").primaryKey(),
+  userId: text("userId").notNull(),
+  school: text("school").notNull(),
+  location: text("location").notNull().default(""),
+  degree: text("degree").notNull(),
+  period: text("period").notNull(),
+  details: text("details").notNull().default(""), // newline-separated bullets
+  published: boolean("published").notNull().default(true),
+  sortOrder: integer("sortOrder").notNull().default(0),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+})
+
+export const languageEntries = pgTable("language_entries", {
+  id: serial("id").primaryKey(),
+  userId: text("userId").notNull(),
+  name: text("name").notNull(),
+  level: text("level").notNull(),
+  published: boolean("published").notNull().default(true),
+  sortOrder: integer("sortOrder").notNull().default(0),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+})
+
+// Singleton row (id is always 1) holding the CV header/description and the
+// two technical-skills lists. These aren't repeatable list items the way
+// experience/education/languages are, so a single editable row — updated
+// via upsert, never inserted/deleted through the admin UI — is a simpler
+// fit than a full CRUD table.
+export const cvProfile = pgTable("cv_profile", {
+  id: integer("id").primaryKey(),
+  tagline: text("tagline").notNull().default(""),
+  nationality: text("nationality").notNull().default(""),
+  location: text("location").notNull().default(""),
+  email: text("email").notNull().default(""),
+  phone: text("phone").notNull().default(""),
+  linkedin: text("linkedin").notNull().default(""),
+  linkedinUrl: text("linkedinUrl").notNull().default(""),
+  programmingSkills: text("programmingSkills").notNull().default(""), // newline-separated
+  methodSkills: text("methodSkills").notNull().default(""), // newline-separated
+  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+})
+
 export type PaperEntry = typeof paperEntries.$inferSelect
 export type ProjectEntry = typeof projectEntries.$inferSelect
 export type ExperienceEntry = typeof experienceEntries.$inferSelect
+export type EducationEntry = typeof educationEntries.$inferSelect
+export type LanguageEntry = typeof languageEntries.$inferSelect
+export type CvProfile = typeof cvProfile.$inferSelect

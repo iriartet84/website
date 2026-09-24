@@ -1,12 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { useActionState, useState } from 'react'
 import { slugify } from '@/lib/validations'
 import {
   createPaperAction,
   createProjectAction,
   updatePaperAction,
   updateProjectAction,
+  type ActionState,
 } from '@/app/admin/actions'
 
 type Kind = 'paper' | 'project'
@@ -23,8 +24,11 @@ export type EntryDefaults = {
   status?: string
   kind?: string
   latexSource?: string | null
+  sortOrder?: number
   published?: boolean
 }
+
+const initialState: ActionState = {}
 
 export function EntryForm({
   kind,
@@ -38,25 +42,28 @@ export function EntryForm({
   const [contentType, setContentType] = useState(defaults?.contentType ?? 'pdf')
   const [slug, setSlug] = useState(defaults?.slug ?? '')
 
-  async function save(formData: FormData) {
-    if (kind === 'paper') {
-      if (entryId) {
-        await updatePaperAction(entryId, {}, formData)
-      } else {
-        await createPaperAction({}, formData)
-      }
-      return
-    }
+  // Pick the right action for this kind/mode. Update actions take `id` as
+  // their first argument, ahead of the (prevState, formData) pair
+  // useActionState expects — bind it in now so the bound function matches
+  // that shape.
+  const action =
+    kind === 'paper'
+      ? entryId
+        ? updatePaperAction.bind(null, entryId)
+        : createPaperAction
+      : entryId
+        ? updateProjectAction.bind(null, entryId)
+        : createProjectAction
 
-    if (entryId) {
-      await updateProjectAction(entryId, {}, formData)
-    } else {
-      await createProjectAction({}, formData)
-    }
-  }
+  const [state, formAction, pending] = useActionState(action, initialState)
 
   return (
-    <form action={save} className="space-y-4 rounded-2xl bg-white p-6 shadow-sm shadow-navy/5">
+    <form action={formAction} className="space-y-4 rounded-2xl bg-white p-6 shadow-sm shadow-navy/5">
+      {state?.error && (
+        <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {state.error}
+        </p>
+      )}
       <div className="grid gap-4 md:grid-cols-2">
         <label className="text-sm font-medium text-navy">
           Title
@@ -206,19 +213,35 @@ export function EntryForm({
           />
         </label>
       )}
-      <label className="flex items-center gap-2 text-sm text-navy">
-        <input
-          type="checkbox"
-          name="published"
-          defaultChecked={defaults?.published ?? true}
-        />
-        Published
-      </label>
+      <div className="grid gap-4 md:grid-cols-2">
+        <label className="text-sm font-medium text-navy">
+          Sort order (lower shows first)
+          <input
+            type="number"
+            name="sortOrder"
+            defaultValue={defaults?.sortOrder ?? 0}
+            className="mt-1.5 w-full rounded-lg border border-border px-3 py-2 text-sm"
+          />
+        </label>
+        <label className="flex items-center gap-2 self-end text-sm text-navy">
+          <input
+            type="checkbox"
+            name="published"
+            defaultChecked={defaults?.published ?? true}
+          />
+          Published
+        </label>
+      </div>
       <button
         type="submit"
-        className="rounded-full bg-navy px-5 py-2.5 text-sm font-medium text-white hover:bg-navy-800"
+        disabled={pending}
+        className="rounded-full bg-navy px-5 py-2.5 text-sm font-medium text-white hover:bg-navy-800 disabled:opacity-50"
       >
-        Save
+        {pending
+          ? contentType === 'latex'
+            ? 'Compiling…'
+            : 'Saving…'
+          : 'Save'}
       </button>
     </form>
   )

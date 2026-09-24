@@ -12,7 +12,12 @@ export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
   const { slug } = await params
-  const paper = await getPublicPaperBySlug(slug)
+  let paper
+  try {
+    paper = await getPublicPaperBySlug(slug)
+  } catch {
+    return { title: 'Toribio Iriarte' }
+  }
   if (!paper) return { title: 'Paper not found' }
   return {
     title: paper.title,
@@ -27,7 +32,25 @@ export async function generateMetadata({
 
 export default async function PaperDetailPage({ params }: PageProps) {
   const { slug } = await params
-  const paper = await getPublicPaperBySlug(slug)
+
+  let paper
+  try {
+    paper = await getPublicPaperBySlug(slug)
+  } catch {
+    return (
+      <main className="mx-auto max-w-4xl px-5 py-32 text-center sm:px-8">
+        <p className="text-sm text-muted-foreground">
+          This paper could not be loaded right now — please try again shortly.
+        </p>
+        <Link
+          href="/papers"
+          className="mt-4 inline-block text-sm font-medium text-steel-700 hover:text-navy"
+        >
+          &larr; Back to Papers &amp; Briefs
+        </Link>
+      </main>
+    )
+  }
   if (!paper) notFound()
 
   const year = paper.year || new Date(paper.date).getFullYear().toString()

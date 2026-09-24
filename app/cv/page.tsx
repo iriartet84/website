@@ -3,13 +3,13 @@ import Link from 'next/link'
 import { ArrowUpRight, Mail } from 'lucide-react'
 import { LinkedInIcon } from '@/components/social-links'
 import { PageHeader } from '@/components/page-header'
+import { profile } from '@/lib/content'
 import {
-  profile,
-  education,
-  languages,
-  cvSkills,
-} from '@/lib/content'
-import { getPublishedExperience } from '@/lib/queries'
+  getPublishedExperience,
+  getPublishedEducation,
+  getPublishedLanguages,
+  getCvProfile,
+} from '@/lib/queries'
 
 export const revalidate = 3600
 
@@ -35,40 +35,45 @@ function Section({
 }
 
 export default async function CvPage() {
-  const experience = await getPublishedExperience()
+  const [experience, education, languages, cv] = await Promise.all([
+    getPublishedExperience(),
+    getPublishedEducation(),
+    getPublishedLanguages(),
+    getCvProfile(),
+  ])
 
   return (
     <main>
       <PageHeader
         eyebrow="Curriculum Vitae"
         title={profile.fullName}
-        description={profile.tagline}
+        description={cv.tagline}
       />
 
       <div className="mx-auto max-w-6xl px-5 sm:px-8">
         {/* Quick facts */}
         <div className="flex flex-wrap gap-x-8 gap-y-3 py-8 text-sm">
           <span className="text-muted-foreground">
-            Nationality — <span className="text-navy">{profile.nationality}</span>
+            Nationality — <span className="text-navy">{cv.nationality}</span>
           </span>
           <span className="text-muted-foreground">
-            Based in — <span className="text-navy">{profile.location}</span>
+            Based in — <span className="text-navy">{cv.location}</span>
           </span>
           <a
-            href={`mailto:${profile.email}`}
+            href={`mailto:${cv.email}`}
             className="inline-flex items-center gap-1.5 text-navy hover:opacity-70"
           >
             <Mail className="size-4" />
-            {profile.email}
+            {cv.email}
           </a>
           <a
-            href={profile.linkedinUrl}
+            href={cv.linkedinUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 text-navy hover:opacity-70"
           >
             <LinkedInIcon className="size-4" />
-            {profile.linkedin}
+            {cv.linkedin}
           </a>
         </div>
 
@@ -135,7 +140,7 @@ export default async function CvPage() {
             <div>
               <p className="text-sm font-medium text-navy">Programming & Tools</p>
               <div className="mt-3 flex flex-wrap gap-2">
-                {cvSkills.programming.map((s) => (
+                {cv.programming.map((s) => (
                   <span
                     key={s}
                     className="rounded-full bg-steel/10 px-3 py-1 text-xs font-medium text-steel-700"
@@ -150,7 +155,7 @@ export default async function CvPage() {
                 Econometric & ML Methods
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
-                {cvSkills.methods.map((s) => (
+                {cv.methods.map((s) => (
                   <span
                     key={s}
                     className="rounded-full bg-steel/10 px-3 py-1 text-xs font-medium text-steel-700"

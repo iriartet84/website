@@ -35,6 +35,7 @@ export default async function EditPaperPage({
             contentType: row.contentType,
             type: row.type,
             latexSource: row.latexSource,
+            sortOrder: row.sortOrder,
             published: row.published,
           }}
         />

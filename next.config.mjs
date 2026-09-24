@@ -3,6 +3,14 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  experimental: {
+    serverActions: {
+      // Matches MAX_PDF_BYTES (8MB) in lib/validations.ts with headroom —
+      // Next's own default here is 1MB, which would reject valid uploads
+      // before that check ever runs.
+      bodySizeLimit: '10mb',
+    },
+  },
   async headers() {
     return [
       {

@@ -22,6 +22,7 @@ export const entryInputSchema = z.object({
   status: z.string().trim().max(40).optional(),
   kind: z.enum(["map", "chart", "dashboard", "model"]).optional(),
   latexSource: z.string().max(MAX_LATEX_CHARS).optional(),
+  sortOrder: z.coerce.number().int().default(0),
   published: z.boolean().optional(),
 })
 
@@ -63,3 +64,39 @@ export function parseDetails(value: string) {
     .map((line) => line.trim())
     .filter(Boolean)
 }
+
+export const educationInputSchema = z.object({
+  school: z.string().trim().min(2).max(200),
+  location: z.string().trim().max(150).optional(),
+  degree: z.string().trim().min(2).max(300),
+  period: z.string().trim().min(2).max(80),
+  details: z.string().trim().max(4000),
+  sortOrder: z.coerce.number().int().default(0),
+  published: z.boolean().optional(),
+})
+
+export type EducationInput = z.infer<typeof educationInputSchema>
+
+export const languageInputSchema = z.object({
+  name: z.string().trim().min(2).max(80),
+  level: z.string().trim().min(1).max(60),
+  sortOrder: z.coerce.number().int().default(0),
+  published: z.boolean().optional(),
+})
+
+export type LanguageInput = z.infer<typeof languageInputSchema>
+
+export const cvProfileInputSchema = z.object({
+  tagline: z.string().trim().min(10).max(600),
+  nationality: z.string().trim().max(150).optional(),
+  location: z.string().trim().max(150).optional(),
+  email: z.string().trim().email().optional().or(z.literal("")),
+  phone: z.string().trim().max(40).optional(),
+  linkedin: z.string().trim().max(150).optional(),
+  linkedinUrl: z.string().trim().max(300).optional(),
+  // Skills textareas use the same one-per-line convention as `details`.
+  programmingSkills: z.string().trim().max(2000),
+  methodSkills: z.string().trim().max(2000),
+})
+
+export type CvProfileInput = z.infer<typeof cvProfileInputSchema>

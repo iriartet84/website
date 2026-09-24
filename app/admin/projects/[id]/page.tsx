@@ -36,6 +36,7 @@ export default async function EditProjectPage({
             status: row.status,
             kind: row.kind,
             latexSource: row.latexSource,
+            sortOrder: row.sortOrder,
             published: row.published,
           }}
         />
