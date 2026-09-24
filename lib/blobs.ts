@@ -65,29 +65,70 @@ async function s3Client(cfg: S3Config) {
   })
 }
 
-function pdfKeyFor(filename: string) {
-  return `${randomUUID()}-${filename.replace(/[^a-zA-Z0-9._-]/g, "_")}`
+function pdfKeyFor(filename: string, contentType: StoredContentType = "application/pdf") {
+  let safe = filename.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-120) || "file"
+  // Make sure the key ends in an extension matching the content type, since
+  // that's what contentTypeForKey reads back (a "scan" or "photo.jpeg" file
+  // name must still resolve to the type it was uploaded as).
+  const expected =
+    contentType === "application/pdf" ? ".pdf" : IMAGE_CONTENT_TYPES[contentType]
+  if (contentTypeForKey(safe) !== contentType || !safe.includes(".")) {
+    safe = `${safe}${expected}`
+  }
+  return `${randomUUID()}-${safe}`
 }
 
-// Used by the admin UI to upload a PDF straight to the bucket from the
+// Content types this storage layer hands out. Uploaded keys keep the
+// original file extension (see pdfKeyFor), which is how reads work out the
+// type again without a database lookup. SVG is deliberately not allowed: it
+// can carry script, and the legacy fallback serves files from this origin.
+export const IMAGE_CONTENT_TYPES = {
+  "image/png": ".png",
+  "image/jpeg": ".jpg",
+  "image/webp": ".webp",
+  "image/gif": ".gif",
+} as const
+
+export type StoredContentType = "application/pdf" | keyof typeof IMAGE_CONTENT_TYPES
+
+export function contentTypeForKey(key: string): StoredContentType {
+  const lower = key.toLowerCase()
+  if (lower.endsWith(".png")) return "image/png"
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg"
+  if (lower.endsWith(".webp")) return "image/webp"
+  if (lower.endsWith(".gif")) return "image/gif"
+  return "application/pdf"
+}
+
+// Keys are "<uuid>-<sanitised filename>" — the same shape for every file
+// ever stored, so this also guards the /api/files/[key] route and the save
+// actions against arbitrary strings being passed off as uploaded files.
+export function isStorageKey(key: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-[a-zA-Z0-9._-]{1,200}$/.test(key)
+}
+
+// Used by the admin UI to upload a file straight to the bucket from the
 // browser, without the file ever passing through a Server Action. Returns
 // null when no bucket is configured, so callers can fall back to the
 // server-side upload path.
-export async function createPresignedPdfUpload(filename: string) {
+export async function createPresignedFileUpload(
+  filename: string,
+  contentType: StoredContentType,
+) {
   const cfg = s3Config()
   if (!cfg) return null
 
   const { PutObjectCommand } = await import("@aws-sdk/client-s3")
   const { getSignedUrl } = await import("@aws-sdk/s3-request-presigner")
 
-  const key = pdfKeyFor(filename)
+  const key = pdfKeyFor(filename, contentType)
   const client = await s3Client(cfg)
   const uploadUrl = await getSignedUrl(
     client,
     new PutObjectCommand({
       Bucket: cfg.bucket,
       Key: key,
-      ContentType: "application/pdf",
+      ContentType: contentType,
     }),
     { expiresIn: 300 },
   )
@@ -95,11 +136,15 @@ export async function createPresignedPdfUpload(filename: string) {
   return { key, uploadUrl }
 }
 
+export async function createPresignedPdfUpload(filename: string) {
+  return createPresignedFileUpload(filename, "application/pdf")
+}
+
 // Used by app/api/files/[key]/route.ts to hand back a short-lived download
-// URL for a PDF stored in the bucket, rather than proxying the bytes
+// URL for a file stored in the bucket, rather than proxying the bytes
 // through this app. Returns null when no bucket is configured, so the
 // caller falls back to serving whatever's in the legacy store.
-export async function createPresignedPdfDownload(
+export async function createPresignedFileDownload(
   key: string,
   options?: { filename?: string; download?: boolean },
 ) {
@@ -109,7 +154,7 @@ export async function createPresignedPdfDownload(
   const { GetObjectCommand } = await import("@aws-sdk/client-s3")
   const { getSignedUrl } = await import("@aws-sdk/s3-request-presigner")
 
-  const filename = (options?.filename ?? key).replace(/"/g, "")
+  const filename = (options?.filename ?? key).replace(/["\\\r\n]/g, "")
   const disposition = options?.download ? "attachment" : "inline"
   const client = await s3Client(cfg)
   return getSignedUrl(
@@ -117,25 +162,85 @@ export async function createPresignedPdfDownload(
     new GetObjectCommand({
       Bucket: cfg.bucket,
       Key: key,
-      ResponseContentType: "application/pdf",
+      ResponseContentType: contentTypeForKey(key),
       ResponseContentDisposition: `${disposition}; filename="${filename}"`,
     }),
     { expiresIn: 300 },
   )
 }
 
-// ---- Legacy storage (Netlify Blobs / local filesystem) --------------------
-// Still used for: local dev, sites that haven't configured a bucket yet,
-// and reading back any PDF that was stored before the S3 migration.
+// Kept under its original name — PDFs are just one of the stored types now.
+export const createPresignedPdfDownload = createPresignedFileDownload
 
-export async function savePdfBlob(filename: string, data: Buffer) {
-  const key = pdfKeyFor(filename)
+// Whether an uploaded key actually exists, and its size when the backend
+// can tell cheaply. The save actions use this to reject a reference to an
+// upload that never completed, or one over the size limit (presigned PUTs
+// can't enforce a maximum size on their own).
+export async function statStoredFile(
+  key: string,
+): Promise<{ found: boolean; size: number | null }> {
+  const cfg = s3Config()
+  if (cfg) {
+    const { HeadObjectCommand } = await import("@aws-sdk/client-s3")
+    const client = await s3Client(cfg)
+    try {
+      const head = await client.send(new HeadObjectCommand({ Bucket: cfg.bucket, Key: key }))
+      return { found: true, size: head.ContentLength ?? null }
+    } catch {
+      return { found: false, size: null }
+    }
+  }
 
   if (isNetlify()) {
     const { getStore } = await import("@netlify/blobs")
     const store = getStore(STORE_NAME)
+    const meta = await store.getMetadata(key)
+    return { found: Boolean(meta), size: null }
+  }
+
+  try {
+    const { stat } = await import("fs/promises")
+    const info = await stat(path.join(LOCAL_DIR, key))
+    return { found: true, size: info.size }
+  } catch {
+    return { found: false, size: null }
+  }
+}
+
+// ---- Server-side saves and legacy storage ---------------------------------
+// The legacy store (Netlify Blobs / local filesystem) is still used for:
+// local dev, sites that haven't configured a bucket yet, and reading back
+// any file that was stored before the S3 migration.
+
+// Server-side save, for bytes that only exist on the server (a compiled
+// LaTeX PDF, or an upload that came through the no-bucket fallback). Writes
+// to the bucket when one is configured — reads go there too, so saving
+// anywhere else would make the file unreachable — and to the legacy store
+// otherwise.
+export async function saveFileBlob(
+  filename: string,
+  data: Buffer,
+  contentType: StoredContentType,
+) {
+  const key = pdfKeyFor(filename, contentType)
+  const cfg = s3Config()
+
+  if (cfg) {
+    const { PutObjectCommand } = await import("@aws-sdk/client-s3")
+    const client = await s3Client(cfg)
+    await client.send(
+      new PutObjectCommand({
+        Bucket: cfg.bucket,
+        Key: key,
+        Body: data,
+        ContentType: contentType,
+      }),
+    )
+  } else if (isNetlify()) {
+    const { getStore } = await import("@netlify/blobs")
+    const store = getStore(STORE_NAME)
     await store.set(key, new Blob([new Uint8Array(data)]), {
-      metadata: { filename, contentType: "application/pdf" },
+      metadata: { filename, contentType },
     })
   } else {
     await mkdir(LOCAL_DIR, { recursive: true })
@@ -146,6 +251,10 @@ export async function savePdfBlob(filename: string, data: Buffer) {
     key,
     url: `/api/files/${encodeURIComponent(key)}`,
   }
+}
+
+export async function savePdfBlob(filename: string, data: Buffer) {
+  return saveFileBlob(filename, data, "application/pdf")
 }
 
 export async function readPdfBlob(key: string): Promise<Buffer | null> {

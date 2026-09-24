@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { PageHeader } from '@/components/page-header'
 import { PapersList } from '@/components/papers-list'
 import { paperCategories, getPublishedPapers } from '@/lib/queries'
+import { getListPageContent } from '@/lib/site-content'
 
 export const revalidate = 3600
 
@@ -17,6 +18,7 @@ export const metadata: Metadata = {
 }
 
 export default async function PapersPage() {
+  const { header } = await getListPageContent('papers')
   let papers: Awaited<ReturnType<typeof getPublishedPapers>> = []
   let failed = false
   try {
@@ -29,9 +31,9 @@ export default async function PapersPage() {
   return (
     <main>
       <PageHeader
-        eyebrow="Papers & Briefs"
-        title="Research & policy writing"
-        description="Papers, reports, and briefs spanning structural macro modelling, geopolitical risk, commodity markets, and financial-market analysis — filter by theme."
+        eyebrow={header.eyebrow}
+        title={header.title}
+        description={header.description}
       />
       {failed ? (
         <p className="mx-auto max-w-6xl px-5 py-16 text-muted-foreground sm:px-8">

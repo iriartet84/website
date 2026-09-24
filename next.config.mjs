@@ -1,3 +1,30 @@
+// Origin the private bucket's presigned URLs point at (see lib/blobs.ts).
+// /api/files/[key] answers with a redirect to such a URL, and CSP applies to
+// the redirect target too — so the PDF viewer's <object> must be allowed to
+// load from it (object-src, and frame-src: Chromium treats a PDF <object> as
+// a frame), or the embedded PDF is blocked. Read at build
+// time: on Netlify, S3_ENDPOINT must be available to builds, not only to
+// functions (the default scope for site env vars covers both).
+function storageOrigin() {
+  const endpoint = process.env.S3_ENDPOINT
+  if (endpoint) {
+    try {
+      return new URL(endpoint).origin
+    } catch {
+      return null
+    }
+  }
+  // Plain AWS S3 (no custom endpoint) uses virtual-hosted-style URLs.
+  const bucket = process.env.S3_BUCKET
+  const region = process.env.S3_REGION
+  if (bucket && region && region !== 'auto') {
+    return `https://${bucket}.s3.${region}.amazonaws.com`
+  }
+  return null
+}
+
+const embedSources = ["'self'", storageOrigin()].filter(Boolean).join(' ')
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   images: {
@@ -43,7 +70,8 @@ const nextConfig = {
               "img-src 'self' data: blob: https:",
               "font-src 'self' data:",
               "connect-src 'self' https:",
-              "object-src 'self'",
+              `object-src ${embedSources}`,
+              `frame-src ${embedSources}`,
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "form-action 'self'",
@@ -52,16 +80,15 @@ const nextConfig = {
         ],
       },
       {
-        // The PDF-serving route: no X-Frame-Options/frame-ancestors here
-        // (see above), but still locked down against being loaded from an
-        // unrelated origin's <object>/<embed>.
+        // The file-serving route: no X-Frame-Options: DENY here (see above),
+        // but still not embeddable by an unrelated origin. Nothing stricter:
+        // Chromium's PDF viewer loads the PDF as a plugin inside its own
+        // response, so a restrictive default-src/object-src on the PDF
+        // response itself can blank the viewer.
         source: "/api/files/:path*",
         headers: [
           { key: "X-Content-Type-Options", value: "nosniff" },
-          {
-            key: "Content-Security-Policy",
-            value: "default-src 'none'; object-src 'self'; frame-ancestors 'self'",
-          },
+          { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
         ],
       },
     ]

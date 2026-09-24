@@ -1,4 +1,6 @@
 import Link from 'next/link'
+import { ArrowRight } from 'lucide-react'
+import { eq } from 'drizzle-orm'
 import {
   listAdminPapers,
   listAdminProjects,
@@ -7,28 +9,26 @@ import {
   listAdminLanguages,
   getAdminCvProfile,
 } from '@/lib/queries'
-import { EntryForm } from '@/components/entry-form'
-import { ExperienceForm } from '@/components/experience-form'
-import { EducationForm } from '@/components/education-form'
-import { LanguageForm } from '@/components/language-form'
-import { CvDescriptionForm, CvContactForm, CvSkillsForm } from '@/components/cv-profile-form'
-import { CvPdfForm } from '@/components/cv-pdf-form'
-import { DeleteEntryButton } from '@/components/delete-entry-button'
+import { db } from '@/lib/db'
+import { siteContent } from '@/lib/db/schema'
+import { isS3Configured } from '@/lib/blobs'
 
-async function loadSection<T>(
-  label: string,
-  fn: () => Promise<T>,
-  fallback: T,
-): Promise<{ data: T; error: string | null }> {
+// Admin overview: one card per editable public page. The editors themselves
+// live at /admin/home, /admin/papers, /admin/projects and /admin/cv.
+
+async function safely<T>(fn: () => Promise<T>, fallback: T): Promise<{ value: T; failed: boolean }> {
   try {
-    return { data: await fn(), error: null }
-  } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err)
-    return {
-      data: fallback,
-      error: `Could not load ${label}: ${detail}`,
-    }
+    return { value: await fn(), failed: false }
+  } catch {
+    return { value: fallback, failed: true }
   }
+}
+
+function countLabel(rows: { published: boolean }[], noun: string) {
+  const hidden = rows.filter((row) => !row.published).length
+  const shown = rows.length - hidden
+  if (rows.length === 0) return `No ${noun}s saved yet — the public page shows the built-in examples`
+  return `${shown} published${hidden ? ` · ${hidden} hidden` : ''}`
 }
 
 export default async function AdminPage({
@@ -38,315 +38,102 @@ export default async function AdminPage({
 }) {
   const { error } = await searchParams
 
-  // Each section is fetched independently — a Promise.all here would mean
-  // one failing query (e.g. a table that hasn't been migrated yet) wipes
-  // out every other section's results too, hiding data that's actually
-  // fine. Loading these separately means a broken "Languages" table still
-  // leaves Papers/Projects/Experience visible and editable.
-  const [
-    { data: papers, error: papersError },
-    { data: projects, error: projectsError },
-    { data: experience, error: experienceError },
-    { data: education, error: educationError },
-    { data: languageList, error: languageError },
-    { data: cvProfileRow, error: cvProfileError },
-  ] = await Promise.all([
-    loadSection('papers', listAdminPapers, []),
-    loadSection('projects', listAdminProjects, []),
-    loadSection('experience', listAdminExperience, []),
-    loadSection('education', listAdminEducation, []),
-    loadSection('languages', listAdminLanguages, []),
-    loadSection('CV profile', getAdminCvProfile, null),
+  const [papers, projects, experience, education, languages, cv, home] = await Promise.all([
+    safely(listAdminPapers, []),
+    safely(listAdminProjects, []),
+    safely(listAdminExperience, []),
+    safely(listAdminEducation, []),
+    safely(listAdminLanguages, []),
+    safely(getAdminCvProfile, null),
+    safely(
+      async () =>
+        (
+          await db
+            .select({ updatedAt: siteContent.updatedAt })
+            .from(siteContent)
+            .where(eq(siteContent.key, 'home'))
+            .limit(1)
+        )[0] ?? null,
+      null,
+    ),
   ])
 
-  const sectionErrors = [
-    papersError,
-    projectsError,
-    experienceError,
-    educationError,
-    languageError,
-    cvProfileError,
-  ].filter((e): e is string => Boolean(e))
-
-  const cvProfileDefaults = cvProfileRow
-    ? {
-        tagline: cvProfileRow.tagline,
-        nationality: cvProfileRow.nationality,
-        location: cvProfileRow.location,
-        email: cvProfileRow.email,
-        phone: cvProfileRow.phone,
-        linkedin: cvProfileRow.linkedin,
-        linkedinUrl: cvProfileRow.linkedinUrl,
-        programmingSkills: cvProfileRow.programmingSkills,
-        methodSkills: cvProfileRow.methodSkills,
-      }
-    : undefined
+  const cvEntries = experience.value.length + education.value.length + languages.value.length
+  const cards = [
+    {
+      href: '/admin/home',
+      title: 'Home',
+      description: 'Hero introduction, the Research Focus carousel (with images) and the Skillset cards.',
+      status: home.failed
+        ? 'Could not load — has `npm run db:push` been run for site_content?'
+        : home.value
+          ? `Last saved ${home.value.updatedAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`
+          : 'Showing the built-in content — edit and save to customise',
+    },
+    {
+      href: '/admin/papers',
+      title: 'Papers & Briefs',
+      description: 'Add, edit, reorder, hide or delete papers, reports and briefs, and their PDFs.',
+      status: papers.failed ? 'Could not load papers' : countLabel(papers.value, 'paper'),
+    },
+    {
+      href: '/admin/projects',
+      title: 'Projects',
+      description: 'The project cards: titles, summaries, status, preview style, tags and documents.',
+      status: projects.failed ? 'Could not load projects' : countLabel(projects.value, 'project'),
+    },
+    {
+      href: '/admin/cv',
+      title: 'CV',
+      description: 'Description, contact details, education, experience, skills, languages and the CV PDF.',
+      status: cv.failed
+        ? 'Could not load the CV'
+        : `${cvEntries} entries · ${cv.value?.cvPdfPathname ? `PDF: ${cv.value.cvPdfFilename ?? 'uploaded'}` : 'no PDF uploaded — download button hidden'}`,
+    },
+  ]
 
   return (
-    <main className="mx-auto max-w-6xl space-y-12 px-5 py-10">
+    <main className="mx-auto max-w-6xl px-5 py-12 sm:px-8 md:py-16">
       {error && (
-        <p className="rounded-xl bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {error}
-        </p>
+        <p className="mb-8 rounded-xl bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</p>
       )}
-      {sectionErrors.length > 0 && (
-        <div className="space-y-2">
-          {sectionErrors.map((message) => (
-            <p
-              key={message}
-              className="rounded-xl bg-destructive/10 px-4 py-3 text-sm text-destructive"
-            >
-              {message}
-            </p>
-          ))}
-        </div>
-      )}
+      <p className="text-xs font-medium uppercase tracking-[0.25em] text-steel-700">Site editor</p>
+      <h1 className="mt-4 font-serif text-4xl tracking-tight text-navy md:text-5xl">
+        Which page do you want to edit?
+      </h1>
+      <p className="mt-5 max-w-2xl text-lg leading-relaxed text-muted-foreground">
+        Each editor shows the page exactly as visitors see it, with editing controls on top. Changes
+        stay a preview until you press Save.
+      </p>
 
-      <section>
-        <h1 className="font-serif text-3xl text-navy">Papers</h1>
-        <div className="mt-4 overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="text-muted-foreground">
-                <th className="py-2">Title</th>
-                <th>Category</th>
-                <th>Type</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {papers.map((paper) => (
-                <tr key={paper.id} className="border-t border-border">
-                  <td className="py-3 text-navy">{paper.title}</td>
-                  <td>{paper.category}</td>
-                  <td>{paper.contentType}</td>
-                  <td className="text-right">
-                    <Link
-                      href={`/admin/papers/${paper.id}`}
-                      className="text-steel-700 hover:text-navy"
-                    >
-                      Edit
-                    </Link>
-                    <DeleteEntryButton kind="paper" id={paper.id} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {papers.length === 0 && !papersError && (
-            <p className="mt-3 text-sm text-muted-foreground">No papers yet.</p>
-          )}
-        </div>
-        <h2 className="mt-8 font-serif text-2xl text-navy">Add paper</h2>
-        <div className="mt-4">
-          <EntryForm kind="paper" />
-        </div>
-      </section>
-
-      <section>
-        <h1 className="font-serif text-3xl text-navy">Projects</h1>
-        <div className="mt-4 overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="text-muted-foreground">
-                <th className="py-2">Title</th>
-                <th>Category</th>
-                <th>Type</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {projects.map((project) => (
-                <tr key={project.id} className="border-t border-border">
-                  <td className="py-3 text-navy">{project.title}</td>
-                  <td>{project.category}</td>
-                  <td>{project.contentType}</td>
-                  <td className="text-right">
-                    <Link
-                      href={`/admin/projects/${project.id}`}
-                      className="text-steel-700 hover:text-navy"
-                    >
-                      Edit
-                    </Link>
-                    <DeleteEntryButton kind="project" id={project.id} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {projects.length === 0 && !projectsError && (
-            <p className="mt-3 text-sm text-muted-foreground">No projects yet.</p>
-          )}
-        </div>
-        <h2 className="mt-8 font-serif text-2xl text-navy">Add project</h2>
-        <div className="mt-4">
-          <EntryForm kind="project" />
-        </div>
-      </section>
-
-      <section>
-        <h1 className="font-serif text-3xl text-navy">CV — Description &amp; skills</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Each card below saves independently — you don&rsquo;t need to fill in the
-          others to update just one.
-        </p>
-        <div className="mt-4 space-y-6">
-          <div>
-            <h2 className="font-serif text-xl text-navy">Description</h2>
-            <div className="mt-3">
-              <CvDescriptionForm defaults={cvProfileDefaults} />
+      <div className="mt-12 grid gap-6 md:grid-cols-2">
+        {cards.map((card) => (
+          <Link
+            key={card.href}
+            href={card.href}
+            className="group flex flex-col rounded-2xl bg-white p-6 shadow-sm shadow-navy/5 transition-all hover:-translate-y-1 hover:shadow-lg hover:shadow-navy/10"
+          >
+            <h2 className="font-serif text-2xl tracking-tight text-navy transition-colors group-hover:text-steel-700">
+              {card.title}
+            </h2>
+            <p className="mt-3 flex-1 text-sm leading-relaxed text-muted-foreground">{card.description}</p>
+            <div className="mt-5 flex items-center gap-3">
+              <span className="text-xs text-muted-foreground">{card.status}</span>
+              <span className="ml-auto inline-flex items-center gap-1 text-sm font-semibold text-steel-700 group-hover:text-navy">
+                Edit page
+                <ArrowRight className="size-4" />
+              </span>
             </div>
-          </div>
-          <div>
-            <h2 className="font-serif text-xl text-navy">Contact &amp; quick facts</h2>
-            <div className="mt-3">
-              <CvContactForm defaults={cvProfileDefaults} />
-            </div>
-          </div>
-          <div>
-            <h2 className="font-serif text-xl text-navy">Technical skills</h2>
-            <div className="mt-3">
-              <CvSkillsForm defaults={cvProfileDefaults} />
-            </div>
-          </div>
-          <div>
-            <h2 className="font-serif text-xl text-navy">CV document</h2>
-            <div className="mt-3">
-              <CvPdfForm currentFilename={cvProfileRow?.cvPdfFilename} />
-            </div>
-          </div>
-        </div>
-      </section>
+          </Link>
+        ))}
+      </div>
 
-      <section>
-        <h1 className="font-serif text-3xl text-navy">CV — Experience</h1>
-        <div className="mt-4 overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="text-muted-foreground">
-                <th className="py-2">Role</th>
-                <th>Org</th>
-                <th>Period</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {experience.map((entry) => (
-                <tr key={entry.id} className="border-t border-border">
-                  <td className="py-3 text-navy">{entry.role}</td>
-                  <td>{entry.org}</td>
-                  <td>{entry.period}</td>
-                  <td className="text-right">
-                    <Link
-                      href={`/admin/cv/experience/${entry.id}`}
-                      className="text-steel-700 hover:text-navy"
-                    >
-                      Edit
-                    </Link>
-                    <DeleteEntryButton kind="experience" id={entry.id} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {experience.length === 0 && !experienceError && (
-            <p className="mt-3 text-sm text-muted-foreground">
-              No experience entries yet — the public /cv page is showing the
-              hardcoded fallback until you add some here.
-            </p>
-          )}
-        </div>
-        <h2 className="mt-8 font-serif text-2xl text-navy">Add experience</h2>
-        <div className="mt-4">
-          <ExperienceForm />
-        </div>
-      </section>
-
-      <section>
-        <h1 className="font-serif text-3xl text-navy">CV — Education</h1>
-        <div className="mt-4 overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="text-muted-foreground">
-                <th className="py-2">School</th>
-                <th>Degree</th>
-                <th>Period</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {education.map((entry) => (
-                <tr key={entry.id} className="border-t border-border">
-                  <td className="py-3 text-navy">{entry.school}</td>
-                  <td>{entry.degree}</td>
-                  <td>{entry.period}</td>
-                  <td className="text-right">
-                    <Link
-                      href={`/admin/cv/education/${entry.id}`}
-                      className="text-steel-700 hover:text-navy"
-                    >
-                      Edit
-                    </Link>
-                    <DeleteEntryButton kind="education" id={entry.id} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {education.length === 0 && !educationError && (
-            <p className="mt-3 text-sm text-muted-foreground">
-              No education entries yet — the public /cv page is showing the
-              hardcoded fallback until you add some here.
-            </p>
-          )}
-        </div>
-        <h2 className="mt-8 font-serif text-2xl text-navy">Add education</h2>
-        <div className="mt-4">
-          <EducationForm />
-        </div>
-      </section>
-
-      <section>
-        <h1 className="font-serif text-3xl text-navy">CV — Languages</h1>
-        <div className="mt-4 overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="text-muted-foreground">
-                <th className="py-2">Language</th>
-                <th>Level</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {languageList.map((entry) => (
-                <tr key={entry.id} className="border-t border-border">
-                  <td className="py-3 text-navy">{entry.name}</td>
-                  <td>{entry.level}</td>
-                  <td className="text-right">
-                    <Link
-                      href={`/admin/cv/languages/${entry.id}`}
-                      className="text-steel-700 hover:text-navy"
-                    >
-                      Edit
-                    </Link>
-                    <DeleteEntryButton kind="language" id={entry.id} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {languageList.length === 0 && !languageError && (
-            <p className="mt-3 text-sm text-muted-foreground">
-              No language entries yet — the public /cv page is showing the
-              hardcoded fallback until you add some here.
-            </p>
-          )}
-        </div>
-        <h2 className="mt-8 font-serif text-2xl text-navy">Add language</h2>
-        <div className="mt-4">
-          <LanguageForm />
-        </div>
-      </section>
+      <p className="mt-12 text-xs text-muted-foreground">
+        File storage:{' '}
+        {isS3Configured()
+          ? 'private S3-compatible bucket (uploads go straight from your browser; downloads use short-lived presigned links).'
+          : 'no bucket configured — files are stored with the fallback storage (Netlify Blobs / local disk).'}
+      </p>
     </main>
   )
 }

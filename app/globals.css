@@ -94,3 +94,15 @@
     text-wrap: pretty;
   }
 }
+
+/* Admin page editors (components/admin/editable.tsx): show the field name
+   inside an editable element while it's empty, so it stays clickable. Only
+   elements rendered in edit mode carry this class. */
+@layer components {
+  .editable-text:empty::before {
+    content: attr(data-placeholder);
+    color: var(--muted-foreground);
+    opacity: 0.6;
+    pointer-events: none;
+  }
+}

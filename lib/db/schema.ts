@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean, serial, integer } from "drizzle-orm/pg-core"
+import { pgTable, text, timestamp, boolean, serial, integer, jsonb } from "drizzle-orm/pg-core"
 
 export const user = pgTable("user", {
   id: text("id").primaryKey(),
@@ -159,6 +159,18 @@ export const cvProfile = pgTable("cv_profile", {
   // short-lived presigned URL (see app/api/files/[key]/route.ts).
   cvPdfPathname: text("cvPdfPathname"),
   cvPdfFilename: text("cvPdfFilename"),
+  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+})
+
+// Editable copy for pages whose content used to live only in lib/content.ts
+// (the Home page, and the Papers/Projects page headers). One row per page,
+// keyed by page ("home", "papers", "projects"); the value is validated by
+// the zod schemas in lib/site-content-shared.ts on both read and write.
+// A missing row means "use the built-in defaults", so the public site looks
+// exactly as before until something is saved from the admin editor.
+export const siteContent = pgTable("site_content", {
+  key: text("key").primaryKey(),
+  value: jsonb("value").notNull(),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
 })
 
