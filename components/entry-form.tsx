@@ -1,12 +1,13 @@
 'use client'
 
-import { useActionState, useState } from 'react'
-import { slugify } from '@/lib/validations'
+import { useActionState, useState, type FormEvent } from 'react'
+import { slugify, MAX_PDF_BYTES } from '@/lib/validations'
 import {
   createPaperAction,
   createProjectAction,
   updatePaperAction,
   updateProjectAction,
+  requestPdfUploadUrl,
   type ActionState,
 } from '@/app/admin/actions'
 
@@ -41,6 +42,8 @@ export function EntryForm({
 }) {
   const [contentType, setContentType] = useState(defaults?.contentType ?? 'pdf')
   const [slug, setSlug] = useState(defaults?.slug ?? '')
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
 
   // Pick the right action for this kind/mode. Update actions take `id` as
   // their first argument, ahead of the (prevState, formData) pair
@@ -57,11 +60,79 @@ export function EntryForm({
 
   const [state, formAction, pending] = useActionState(action, initialState)
 
+  // When a bucket is configured (S3_BUCKET/etc. on the server), upload the
+  // PDF directly to it via a presigned URL before submitting the rest of
+  // the form — the file itself never passes through this server, which is
+  // what lets it exceed the small effective size ceiling a Netlify
+  // Function imposes on binary bodies. If no bucket is configured,
+  // requestPdfUploadUrl returns null and the file is submitted the
+  // original way, through the form action.
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    if (contentType !== 'pdf') return // LaTeX source is small text — no upload step needed
+
+    const form = event.currentTarget
+    const fileInput = form.elements.namedItem('pdf') as HTMLInputElement | null
+    const file = fileInput?.files?.[0]
+    if (!file) return // editing without replacing the PDF — nothing to upload
+
+    if (file.size > MAX_PDF_BYTES) {
+      event.preventDefault()
+      setUploadError(
+        `PDF files must be ${Math.round(MAX_PDF_BYTES / (1024 * 1024))}MB or smaller.`,
+      )
+      return
+    }
+
+    event.preventDefault()
+    setUploadError(null)
+    setUploading(true)
+    try {
+      const presigned = await requestPdfUploadUrl(file.name)
+      if (!presigned) {
+        // No bucket configured — fall back to submitting the file itself.
+        formAction(new FormData(form))
+        return
+      }
+
+      const uploadRes = await fetch(presigned.uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/pdf' },
+        body: file,
+      })
+      if (!uploadRes.ok) {
+        throw new Error('Uploading the PDF to storage failed. Please try again.')
+      }
+
+      const fd = new FormData(form)
+      fd.delete('pdf')
+      fd.set('pdfKey', presigned.key)
+      // The bucket is private — this is the app's own `/api/files/[key]`
+      // route, which resolves a fresh presigned GET at request time, not a
+      // direct bucket URL.
+      fd.set('pdfPublicUrl', `/api/files/${encodeURIComponent(presigned.key)}`)
+      fd.set('pdfOriginalFilename', file.name)
+      formAction(fd)
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'Upload failed')
+    } finally {
+      setUploading(false)
+    }
+  }
+
   return (
-    <form action={formAction} className="space-y-4 rounded-2xl bg-white p-6 shadow-sm shadow-navy/5">
+    <form
+      action={formAction}
+      onSubmit={handleSubmit}
+      className="space-y-4 rounded-2xl bg-white p-6 shadow-sm shadow-navy/5"
+    >
       {state?.error && (
         <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {state.error}
+        </p>
+      )}
+      {uploadError && (
+        <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {uploadError}
         </p>
       )}
       <div className="grid gap-4 md:grid-cols-2">
@@ -234,14 +305,16 @@ export function EntryForm({
       </div>
       <button
         type="submit"
-        disabled={pending}
+        disabled={pending || uploading}
         className="rounded-full bg-navy px-5 py-2.5 text-sm font-medium text-white hover:bg-navy-800 disabled:opacity-50"
       >
-        {pending
-          ? contentType === 'latex'
-            ? 'Compiling…'
-            : 'Saving…'
-          : 'Save'}
+        {uploading
+          ? 'Uploading PDF…'
+          : pending
+            ? contentType === 'latex'
+              ? 'Compiling…'
+              : 'Saving…'
+            : 'Save'}
       </button>
     </form>
   )

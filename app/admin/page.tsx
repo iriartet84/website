@@ -12,6 +12,7 @@ import { ExperienceForm } from '@/components/experience-form'
 import { EducationForm } from '@/components/education-form'
 import { LanguageForm } from '@/components/language-form'
 import { CvDescriptionForm, CvContactForm, CvSkillsForm } from '@/components/cv-profile-form'
+import { CvPdfForm } from '@/components/cv-pdf-form'
 import { DeleteEntryButton } from '@/components/delete-entry-button'
 
 async function loadSection<T>(
@@ -206,6 +207,12 @@ export default async function AdminPage({
             <h2 className="font-serif text-xl text-navy">Technical skills</h2>
             <div className="mt-3">
               <CvSkillsForm defaults={cvProfileDefaults} />
+            </div>
+          </div>
+          <div>
+            <h2 className="font-serif text-xl text-navy">CV document</h2>
+            <div className="mt-3">
+              <CvPdfForm currentFilename={cvProfileRow?.cvPdfFilename} />
             </div>
           </div>
         </div>

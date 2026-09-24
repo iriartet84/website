@@ -6,7 +6,7 @@ import { eq } from "drizzle-orm"
 import { db } from "@/lib/db"
 import { paperEntries, projectEntries } from "@/lib/db/schema"
 import { requireAdmin } from "@/lib/require-admin"
-import { savePdfBlob } from "@/lib/blobs"
+import { savePdfBlob, createPresignedPdfUpload } from "@/lib/blobs"
 import { compileLatex } from "@/lib/compile-latex"
 import {
   MAX_PDF_BYTES,
@@ -35,6 +35,33 @@ async function resolvePdf(formData: FormData) {
     return { ...stored, latexSource, filename: "compiled.pdf" }
   }
 
+  // Direct-to-bucket upload: the browser already PUT the file straight to
+  // the S3-compatible bucket via a presigned URL (see requestPdfUploadUrl
+  // below) before this action ran, so the PDF bytes themselves never pass
+  // through this Server Action — only these small string fields do. This
+  // is what lets a PDF exceed the ~4.5MB effective binary-payload ceiling a
+  // Netlify Function would otherwise impose on both upload and download.
+  // pdfPublicUrl is the app's own `/api/files/[key]` route, not a bucket
+  // URL — the bucket is private, so reads always go through that route,
+  // which resolves a fresh presigned GET at request time (see
+  // lib/blobs.ts and app/api/files/[key]/route.ts).
+  const pdfKey = formData.get("pdfKey")
+  const pdfPublicUrl = formData.get("pdfPublicUrl")
+  if (typeof pdfKey === "string" && pdfKey && typeof pdfPublicUrl === "string" && pdfPublicUrl) {
+    const pdfOriginalFilename = formData.get("pdfOriginalFilename")
+    return {
+      key: pdfKey,
+      url: pdfPublicUrl,
+      filename:
+        typeof pdfOriginalFilename === "string" && pdfOriginalFilename
+          ? pdfOriginalFilename
+          : "document.pdf",
+      latexSource: null,
+    }
+  }
+
+  // Fallback path — used when no bucket is configured yet (S3_BUCKET/etc.
+  // unset), so the file is uploaded the original way, through this action.
   const file = formData.get("pdf")
   if (!(file instanceof File) || file.size === 0) {
     throw new Error("A PDF file is required")
@@ -48,6 +75,19 @@ async function resolvePdf(formData: FormData) {
   const buffer = Buffer.from(await file.arrayBuffer())
   const stored = await savePdfBlob(file.name, buffer)
   return { ...stored, latexSource: null, filename: file.name }
+}
+
+// Called directly from the client (components/entry-form.tsx) before the
+// rest of the form is submitted, so the PDF's bytes can go straight from
+// the browser to the bucket rather than through this server. Returns
+// `null` when no bucket is configured, so the caller falls back to
+// uploading the file through the form action itself, same as before this
+// existed.
+export async function requestPdfUploadUrl(filename: string) {
+  const session = await requireAdmin()
+  if (!session) redirect("/login")
+
+  return createPresignedPdfUpload(filename)
 }
 
 function fieldsFrom(formData: FormData) {
@@ -139,7 +179,10 @@ export async function updatePaperAction(
   try {
     const fields = fieldsFrom(formData)
     const file = formData.get("pdf")
-    const hasFile = file instanceof File && file.size > 0
+    const pdfKey = formData.get("pdfKey")
+    const hasFile =
+      (file instanceof File && file.size > 0) ||
+      (typeof pdfKey === "string" && pdfKey.length > 0)
     const latexChanged =
       fields.contentType === "latex" && String(formData.get("latexSource") ?? "").trim()
 
@@ -235,7 +278,10 @@ export async function updateProjectAction(
   try {
     const fields = fieldsFrom(formData)
     const file = formData.get("pdf")
-    const hasFile = file instanceof File && file.size > 0
+    const pdfKey = formData.get("pdfKey")
+    const hasFile =
+      (file instanceof File && file.size > 0) ||
+      (typeof pdfKey === "string" && pdfKey.length > 0)
     const latexChanged =
       fields.contentType === "latex" && String(formData.get("latexSource") ?? "").trim()
 

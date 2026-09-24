@@ -160,6 +160,11 @@ export type PublicCvProfile = {
   linkedinUrl: string
   programming: string[]
   methods: string[]
+  // Null when no CV PDF has been uploaded yet. Points at this app's own
+  // `/api/files/[key]` route (see app/api/files/[key]/route.ts) — never a
+  // direct bucket URL, since the bucket is private — which resolves a
+  // fresh presigned download URL at request time.
+  cvPdfUrl: string | null
 }
 
 export async function getCvProfile(): Promise<PublicCvProfile> {
@@ -173,6 +178,7 @@ export async function getCvProfile(): Promise<PublicCvProfile> {
     linkedinUrl: staticProfile.linkedinUrl,
     programming: staticCvSkills.programming,
     methods: staticCvSkills.methods,
+    cvPdfUrl: null,
   }
 
   if (!process.env.DATABASE_URL) {
@@ -203,6 +209,9 @@ export async function getCvProfile(): Promise<PublicCvProfile> {
       methods: row.methodSkills
         ? parseDetails(row.methodSkills)
         : fallback.methods,
+      cvPdfUrl: row.cvPdfPathname
+        ? `/api/files/${encodeURIComponent(row.cvPdfPathname)}?download=1&filename=${encodeURIComponent(row.cvPdfFilename || "CV.pdf")}`
+        : null,
     }
   } catch {
     return fallback

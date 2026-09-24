@@ -1,0 +1,20 @@
+[
+  {
+    "corsRuleName": "portfolio-s3",
+    "allowedOrigins": [
+      "http://localhost:3000",
+      "https://toribioiriarte.netlify.app"
+    ],
+    "allowedHeaders": [
+      "*"
+    ],
+    "allowedOperations": [
+      "s3_get",
+      "s3_put"
+    ],
+    "exposeHeaders": [
+      "ETag"
+    ],
+    "maxAgeSeconds": 3600
+  }
+]

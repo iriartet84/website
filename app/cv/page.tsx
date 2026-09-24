@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { ArrowUpRight, Mail } from 'lucide-react'
+import { ArrowUpRight, Download, Mail } from 'lucide-react'
 import { LinkedInIcon } from '@/components/social-links'
 import { PageHeader } from '@/components/page-header'
 import { profile } from '@/lib/content'
@@ -75,6 +75,15 @@ export default async function CvPage() {
             <LinkedInIcon className="size-4" />
             {cv.linkedin}
           </a>
+          {cv.cvPdfUrl && (
+            <a
+              href={cv.cvPdfUrl}
+              className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-navy px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-navy-800"
+            >
+              <Download className="size-3.5" />
+              Download CV
+            </a>
+          )}
         </div>
 
         <Section title="Education">

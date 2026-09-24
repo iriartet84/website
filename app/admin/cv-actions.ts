@@ -11,7 +11,9 @@ import {
   cvProfile,
 } from "@/lib/db/schema"
 import { requireAdmin } from "@/lib/require-admin"
+import { savePdfBlob } from "@/lib/blobs"
 import {
+  MAX_PDF_BYTES,
   experienceInputSchema,
   educationInputSchema,
   languageInputSchema,
@@ -310,6 +312,73 @@ export async function updateCvProfileAction(formData: FormData) {
           linkedinUrl: fields.linkedinUrl ?? "",
           programmingSkills: fields.programmingSkills,
           methodSkills: fields.methodSkills,
+          updatedAt: new Date(),
+        },
+      })
+  } catch (error) {
+    errorRedirect(error)
+  }
+
+  revalidatePath("/cv")
+  redirect("/admin")
+}
+
+// ---- CV document (PDF) -------------------------------------------------
+
+async function resolveCvPdf(formData: FormData) {
+  // Direct-to-bucket upload: the browser already PUT the file straight to
+  // the S3-compatible bucket via a presigned URL (see requestPdfUploadUrl
+  // in app/admin/actions.ts, reused here) before this action ran — same
+  // pattern as paper/project PDFs (see resolvePdf in app/admin/actions.ts).
+  const pdfKey = formData.get("pdfKey")
+  if (typeof pdfKey === "string" && pdfKey) {
+    const pdfFilename = formData.get("pdfFilename")
+    return {
+      key: pdfKey,
+      filename: typeof pdfFilename === "string" && pdfFilename ? pdfFilename : "CV.pdf",
+    }
+  }
+
+  // Fallback — used only when no bucket is configured yet (S3_BUCKET/etc.
+  // unset), so the file is uploaded the original way, through this action.
+  const file = formData.get("pdf")
+  if (!(file instanceof File) || file.size === 0) {
+    throw new Error("A PDF file is required")
+  }
+  if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+    throw new Error("Only PDF files are accepted")
+  }
+  if (file.size > MAX_PDF_BYTES) {
+    throw new Error("PDF files must be 8MB or smaller")
+  }
+  const buffer = Buffer.from(await file.arrayBuffer())
+  const stored = await savePdfBlob(file.name, buffer)
+  return { key: stored.key, filename: file.name }
+}
+
+export async function updateCvPdfAction(formData: FormData) {
+  const session = await requireAdmin()
+  if (!session) redirect("/login")
+
+  try {
+    const pdf = await resolveCvPdf(formData)
+
+    // Same singleton-row upsert as updateCvProfileAction above — only the
+    // two PDF columns are touched, so replacing the CV never affects the
+    // description/contact/skills sections saved separately.
+    await db
+      .insert(cvProfile)
+      .values({
+        id: CV_PROFILE_ID,
+        cvPdfPathname: pdf.key,
+        cvPdfFilename: pdf.filename,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: cvProfile.id,
+        set: {
+          cvPdfPathname: pdf.key,
+          cvPdfFilename: pdf.filename,
           updatedAt: new Date(),
         },
       })

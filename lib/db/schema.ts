@@ -153,6 +153,12 @@ export const cvProfile = pgTable("cv_profile", {
   linkedinUrl: text("linkedinUrl").notNull().default(""),
   programmingSkills: text("programmingSkills").notNull().default(""), // newline-separated
   methodSkills: text("methodSkills").notNull().default(""), // newline-separated
+  // The active CV PDF: cvPdfPathname is the storage key (see lib/blobs.ts),
+  // resolved to a download URL at request time rather than stored as a
+  // fixed URL, since the bucket is private and reads go through a
+  // short-lived presigned URL (see app/api/files/[key]/route.ts).
+  cvPdfPathname: text("cvPdfPathname"),
+  cvPdfFilename: text("cvPdfFilename"),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
 })
 
