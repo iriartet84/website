@@ -1,10 +1,13 @@
 'use client'
 
 import { useCallback } from 'react'
-import { ExternalLink, Plus } from 'lucide-react'
+import Link from 'next/link'
+import { ExternalLink, Plus, Star } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
 import { ProjectCard } from '@/components/project-card'
 import { EditingBanner } from '@/components/admin/admin-bar'
+import { OutputHealthBadge } from '@/components/admin/output-health'
+import { confirmLeaveWithUnsavedChanges } from '@/components/admin/unsaved-guard'
 import {
   AddItemButton,
   EditableItem,
@@ -16,16 +19,17 @@ import {
   scrollToItem,
   settingsInput,
 } from '@/components/admin/editor-ui'
-import { DocumentControl, type DocumentState } from '@/components/admin/document-control'
-import { uploadFile } from '@/components/admin/upload'
 import { focusItem, moveItem, newClientKey, todayIso, useEditorState } from '@/components/admin/use-editor-state'
 import { saveProjectsPageAction } from '@/app/admin/editor-actions'
-import { slugify, type DocumentChange } from '@/lib/validations'
+import { slugify } from '@/lib/validations'
+import { projectSectors, type OutputHealth, type OutputSummary } from '@/lib/project-meta'
 import type { PublicProject } from '@/lib/public-content'
 import type { PageHeaderContent } from '@/lib/site-content-shared'
 
 // /admin/projects: the public Projects page rendered with the same
-// components (PageHeader, ProjectCard), in edit mode.
+// components (PageHeader, ProjectCard), in edit mode. Cards are edited
+// here; each project's page (write-up, charts, links, live data, document)
+// is edited on its own page, /admin/projects/[id].
 
 type ProjectFields = {
   slug: string
@@ -36,6 +40,11 @@ type ProjectFields = {
   date: string
   summary: string
   tags: string[]
+  projectType: string
+  mode: string
+  languages: string[]
+  apis: string[]
+  featured: boolean
 }
 
 export type ProjectsEditorData = {
@@ -44,12 +53,11 @@ export type ProjectsEditorData = {
   rows: (ProjectFields & {
     id: number
     published: boolean
-    contentType: string
-    pdfUrl: string | null
-    pdfFilename: string | null
-    latexSource: string | null
+    updateFrequency: string | null
+    output: OutputSummary | null
+    health: OutputHealth
+    outputError: string | null
   })[]
-  defaults: ProjectFields[]
 }
 
 type Row = ProjectFields & {
@@ -58,46 +66,33 @@ type Row = ProjectFields & {
   published: boolean
   removed: boolean
   slugTouched: boolean
-  contentType: string
-  pdfUrl: string | null
-  pdfFilename: string | null
-  latexSource: string | null
-  doc: DocumentState
+  // Read-only here (set by the page editor and the pipeline).
+  updateFrequency: string | null
+  output: OutputSummary | null
+  health: OutputHealth
+  outputError: string | null
 }
 
 type State = { header: PageHeaderContent; rows: Row[] }
 
 function build(data: ProjectsEditorData): State {
-  const rows: Row[] =
-    data.rows.length > 0 || data.loadError
-      ? data.rows.map((row) => ({
-          ...row,
-          clientKey: `project-${row.id}`,
-          removed: false,
-          slugTouched: true,
-          doc: { kind: 'keep' },
-        }))
-      : data.defaults.map((project, index) => ({
-          ...project,
-          clientKey: `default-project-${index}`,
-          id: null,
-          published: true,
-          removed: false,
-          slugTouched: true,
-          contentType: 'pdf',
-          pdfUrl: null,
-          pdfFilename: null,
-          latexSource: null,
-          doc: { kind: 'keep' },
-        }))
-  return { header: data.header, rows }
+  return {
+    header: data.header,
+    rows: data.rows.map((row) => ({
+      ...row,
+      clientKey: `project-${row.id}`,
+      removed: false,
+      slugTouched: true,
+    })),
+  }
 }
 
 export function ProjectsEditor({ data }: { data: ProjectsEditorData }) {
   const { state, setState, dirty, status, setStatus, discard, markSaved } = useEditorState(data, build)
 
-  const usingDefaults = !data.loadError && data.rows.length === 0
+  const noProjects = !data.loadError && data.rows.length === 0
   const nothingPublished = !data.loadError && data.rows.length > 0 && !data.rows.some((row) => row.published)
+  const featuredCount = state.rows.filter((row) => !row.removed && row.featured && row.published).length
   const errorKey = status.kind === 'error' ? status.clientKey : undefined
 
   const updateRow = (clientKey: string, patch: Partial<Row>) =>
@@ -118,20 +113,24 @@ export function ProjectsEditor({ data }: { data: ProjectsEditorData }) {
       id: null,
       slug: '',
       title: '',
-      category: 'Dashboards',
+      category: projectSectors[0],
       status: 'In progress',
       kind: 'dashboard',
       date: todayIso(),
       summary: '',
       tags: [],
+      projectType: 'analysis',
+      mode: 'static',
+      languages: [],
+      apis: [],
+      featured: false,
       published: true,
       removed: false,
       slugTouched: false,
-      contentType: 'pdf',
-      pdfUrl: null,
-      pdfFilename: null,
-      latexSource: null,
-      doc: { kind: 'keep' },
+      updateFrequency: null,
+      output: null,
+      health: 'none',
+      outputError: null,
     }
     setState((s) => ({ ...s, rows: [...s.rows, row] }))
     focusItem(`item-${clientKey}`)
@@ -139,23 +138,11 @@ export function ProjectsEditor({ data }: { data: ProjectsEditorData }) {
 
   const save = useCallback(async () => {
     const rows = state.rows
-    const uploads = rows.filter((row) => !row.removed && row.doc.kind === 'file')
-    setStatus({
-      kind: 'saving',
-      message: uploads.length ? `Uploading ${uploads.length} PDF${uploads.length > 1 ? 's' : ''}…` : 'Saving…',
-    })
+    setStatus({ kind: 'saving', message: 'Saving…' })
     try {
-      const items = []
-      for (const row of rows) {
-        if (row.removed) continue
-        let document: DocumentChange = { kind: 'keep' }
-        if (row.doc.kind === 'file') {
-          const { key } = await uploadFile(row.doc.file, 'pdf')
-          document = { kind: 'upload', key, filename: row.doc.file.name }
-        } else if (row.doc.kind === 'latex') {
-          document = { kind: 'latex', source: row.doc.source }
-        }
-        items.push({
+      const items = rows
+        .filter((row) => !row.removed)
+        .map((row) => ({
           clientKey: row.clientKey,
           id: row.id,
           title: row.title.trim(),
@@ -167,10 +154,12 @@ export function ProjectsEditor({ data }: { data: ProjectsEditorData }) {
           summary: row.summary.trim(),
           tags: row.tags.map((tag) => tag.trim()).filter(Boolean),
           published: row.published,
-          document,
-        })
-      }
-      setStatus({ kind: 'saving', message: 'Saving…' })
+          projectType: row.projectType,
+          mode: row.mode,
+          languages: row.languages.map((tag) => tag.trim()).filter(Boolean),
+          apis: row.apis.map((tag) => tag.trim()).filter(Boolean),
+          featured: row.featured,
+        }))
       const result = await saveProjectsPageAction({
         header: state.header,
         items,
@@ -211,18 +200,26 @@ export function ProjectsEditor({ data }: { data: ProjectsEditorData }) {
               only update the page header.
             </p>
           )}
-          {usingDefaults && (
+          {noProjects && (
             <p className="mb-8 rounded-xl bg-steel/10 px-4 py-3 text-sm text-steel-700">
-              No projects are saved yet, so visitors currently see these built-in examples. Edit them, delete
-              them or add your own — saving stores them in the database.
+              No projects yet, so visitors see a &ldquo;coming soon&rdquo; message. Add your first project below,
+              save, then use <span className="font-medium">Edit page</span> to write it up and connect its live data.
             </p>
           )}
           {nothingPublished && (
             <p className="mb-8 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              Every project is hidden, so visitors currently see the built-in example projects instead. Publish
-              at least one to replace them.
+              Every project is hidden, so visitors see the &ldquo;coming soon&rdquo; message. Publish at least one to
+              show it.
             </p>
           )}
+          <p className="mb-8 flex items-start gap-2 text-sm text-muted-foreground">
+            <Star className="mt-0.5 size-4 shrink-0 text-steel-700" />
+            <span>
+              {featuredCount > 0
+                ? `${featuredCount} published project${featuredCount > 1 ? 's are' : ' is'} featured. Home shows Featured Projects in place of Research Focus — one project per sector (the first one in this order).`
+                : 'Feature a published project to show it on Home. While none is featured, Home keeps showing Research Focus.'}
+            </span>
+          </p>
 
           <div className="grid gap-6 gap-y-10 md:grid-cols-2">
             {state.rows.map((row, index) => {
@@ -244,8 +241,15 @@ export function ProjectsEditor({ data }: { data: ProjectsEditorData }) {
                 tags: row.tags,
                 status: row.status,
                 kind: row.kind as PublicProject['kind'],
-                pdfUrl: row.pdfUrl,
+                pdfUrl: null,
                 date: row.date,
+                projectType: row.projectType,
+                mode: row.mode,
+                languages: row.languages,
+                apis: row.apis,
+                featured: row.featured,
+                updateFrequency: row.updateFrequency,
+                output: row.output,
               }
               return (
                 <EditableItem
@@ -320,14 +324,24 @@ export function ProjectsEditor({ data }: { data: ProjectsEditorData }) {
                     project={project}
                     edit={{
                       onChange: (patch) => updateRow(row.clientKey, patch),
-                      documentControl: (
-                        <DocumentControl
-                          current={{ url: row.pdfUrl, filename: row.pdfFilename, contentType: row.contentType }}
-                          pending={row.doc}
-                          latexSource={row.latexSource}
-                          onChange={(doc) => updateRow(row.clientKey, { doc })}
-                        />
-                      ),
+                      sectors: projectSectors,
+                      pageControl:
+                        row.id === null ? (
+                          <span className="text-xs text-muted-foreground">Save to edit its page</span>
+                        ) : (
+                          <span className="flex items-center gap-3">
+                            <OutputHealthBadge health={row.health} error={row.outputError} />
+                            <Link
+                              href={`/admin/projects/${row.id}`}
+                              onClick={(event) => {
+                                if (!confirmLeaveWithUnsavedChanges()) event.preventDefault()
+                              }}
+                              className="text-sm font-semibold text-steel-700 transition-colors hover:text-navy"
+                            >
+                              Edit page &rarr;
+                            </Link>
+                          </span>
+                        ),
                     }}
                   />
                 </EditableItem>

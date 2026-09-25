@@ -71,6 +71,15 @@ export const homeContentSchema = z.object({
     eyebrow: shortText("Skillset eyebrow", 60),
     items: z.array(homeSkillSchema).max(9),
   }),
+  // Featured projects — shown in place of Research Focus once at least one
+  // published project is featured. Defaulted so rows saved before this
+  // section existed still parse.
+  featured: z
+    .object({
+      eyebrow: shortText("Featured eyebrow", 60),
+      heading: shortText("Featured heading", 120),
+    })
+    .default({ eyebrow: "Featured Projects", heading: "Live research, by sector" }),
 })
 
 export type PageHeaderContent = z.infer<typeof pageHeaderSchema>
@@ -112,6 +121,10 @@ export const defaultHomeContent: HomeContent = {
       description: skill.description,
       tags: skill.tags,
     })),
+  },
+  featured: {
+    eyebrow: "Featured Projects",
+    heading: "Live research, by sector",
   },
 }
 

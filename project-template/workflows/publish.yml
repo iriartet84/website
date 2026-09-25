@@ -1,0 +1,149 @@
+# Runs the project, checks its output, publishes it on GitHub Pages and
+# tells the portfolio site to pick it up.
+#
+#   run.sh ──► site/latest.json ──► validate ──► history/ (dated copy)
+#          ──► GitHub Pages ──► wait until the new file is served
+#          ──► POST <portfolio>/api/projects/refresh
+#
+# One-time setup (see README.md):
+#   Settings → Pages → Source: GitHub Actions
+#   Settings → Secrets and variables → Actions:
+#     variable PORTFOLIO_URL            e.g. https://toribioiriarte.netlify.app
+#     variable PORTFOLIO_PROJECT_SLUG   the project's slug on the portfolio
+#     secret   PORTFOLIO_REFRESH_SECRET same value as the site's PROJECT_REFRESH_SECRET
+#     + any API keys the project needs, as secrets (passed to run.sh below)
+
+name: Publish
+
+on:
+  schedule:
+    # Daily at 06:17 UTC. Match the project's rhythm (weekly: "17 6 * * 1").
+    # GitHub may delay scheduled runs by a few minutes, and pauses them after
+    # 60 days without repository activity (the history commits count).
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "history/**"
+      - "**.md"
+
+permissions:
+  contents: write # history/ commits
+  pages: write
+  id-token: write
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      updated_at: ${{ steps.meta.outputs.updated_at }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: true # lets the history step push
+
+      # ---- Language setup: keep what the project uses, delete the rest ----
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Install Python packages
+        run: if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      # R:
+      # - uses: r-lib/actions/setup-r@v2
+      # - uses: r-lib/actions/setup-r-dependencies@v2   # reads DESCRIPTION
+      #
+      # JavaScript / TypeScript:
+      # - uses: actions/setup-node@v7
+      #   with:
+      #     node-version: 24
+      # - run: npm ci
+      #
+      # Julia:
+      # - uses: julia-actions/setup-julia@v2
+      # ----------------------------------------------------------------------
+
+      - name: Run the project
+        env:
+          # API keys: add them as repository secrets and pass them here.
+          # FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          CI: "true"
+        run: bash run.sh
+
+      - name: Validate the output
+        run: node scripts/validate-output.mjs site/latest.json
+
+      - id: meta
+        name: Read the output's timestamp
+        run: echo "updated_at=$(jq -r .updatedAt site/latest.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Keep a dated copy in history/
+        run: |
+          stamp="$(date -u +%Y-%m-%dT%H%MZ)"
+          mkdir -p history
+          cp site/latest.json "history/$stamp.json"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add history
+          if git commit -m "Output $stamp"; then
+            git pull --rebase --autostash && git push
+          fi
+
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
+
+  notify:
+    needs: [build, deploy]
+    if: ${{ vars.PORTFOLIO_URL != '' && vars.PORTFOLIO_PROJECT_SLUG != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait until GitHub Pages serves the new output
+        env:
+          PAGE_URL: ${{ needs.deploy.outputs.page_url }}
+          EXPECTED: ${{ needs.build.outputs.updated_at }}
+        run: |
+          url="${PAGE_URL%/}/latest.json"
+          for attempt in $(seq 1 30); do
+            served="$(curl -fsS "$url?t=$(date +%s)" | jq -r .updatedAt 2>/dev/null || true)"
+            if [ "$served" = "$EXPECTED" ]; then
+              echo "Live at $url (updatedAt $served)"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::warning::$url still serves '$served' after 5 minutes; notifying the portfolio anyway."
+
+      - name: Tell the portfolio to refresh
+        env:
+          PORTFOLIO_URL: ${{ vars.PORTFOLIO_URL }}
+          SLUG: ${{ vars.PORTFOLIO_PROJECT_SLUG }}
+          SECRET: ${{ secrets.PORTFOLIO_REFRESH_SECRET }}
+        run: |
+          status="$(curl -sS -o response.json -w '%{http_code}' -X POST "${PORTFOLIO_URL%/}/api/projects/refresh" \
+            -H "Authorization: Bearer $SECRET" \
+            -H "Content-Type: application/json" \
+            --data "{\"slug\": \"$SLUG\"}")"
+          cat response.json; echo
+          if [ "$status" != "200" ]; then
+            echo "::error::The portfolio answered HTTP $status (401: check PORTFOLIO_REFRESH_SECRET; 404: check PORTFOLIO_PROJECT_SLUG and the project's output URL; 422: it rejected the file)."
+            exit 1
+          fi

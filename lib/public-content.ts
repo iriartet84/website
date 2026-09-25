@@ -1,8 +1,9 @@
 import {
   papers as staticPapers,
   paperCategories,
-  projects as staticProjects,
 } from '@/lib/content'
+import type { OutputSummary, ProjectLink, ProjectSection } from '@/lib/project-meta'
+import type { ProjectOutput } from '@/lib/project-output'
 
 export type PublicPaper = {
   slug: string
@@ -19,13 +20,25 @@ export type PublicPaper = {
 export type PublicProject = {
   slug: string
   title: string
+  // Sector (shared with Papers' categories).
   category: string
   summary: string
+  // Tools & methods.
   tags: string[]
+  // Lifecycle: Live | In progress | Coming soon.
   status: string
+  // Preview illustration shown when there's no live output yet.
   kind: 'map' | 'chart' | 'dashboard' | 'model'
   pdfUrl: string | null
   date: string
+  projectType: string
+  mode: string
+  languages: string[]
+  apis: string[]
+  featured: boolean
+  updateFrequency: string | null
+  // First headline figure + sparkline from the stored output, if any.
+  output: OutputSummary | null
 }
 
 function slugify(value: string) {
@@ -49,20 +62,6 @@ export function staticPublicPapers(): PublicPaper[] {
   }))
 }
 
-export function staticPublicProjects(): PublicProject[] {
-  return staticProjects.map((project) => ({
-    slug: slugify(project.title),
-    title: project.title,
-    category: project.category,
-    summary: project.summary,
-    tags: project.tags,
-    status: project.status,
-    kind: project.kind,
-    pdfUrl: null,
-    date: '2025-01-01',
-  }))
-}
-
 export type PublicPaperDetail = PublicPaper & {
   abstract: string
   contentType: string
@@ -75,22 +74,17 @@ export type PublicProjectDetail = PublicProject & {
   contentType: string
   latexSource: string | null
   pdfFilename: string | null
+  links: ProjectLink[]
+  embedUrl: string | null
+  // Empty = the original single-document page.
+  sections: ProjectSection[]
+  fullOutput: ProjectOutput | null
 }
 
 export function staticPublicPaperDetails(): PublicPaperDetail[] {
   return staticPublicPapers().map((paper) => ({
     ...paper,
     abstract: paper.excerpt,
-    contentType: 'pdf',
-    latexSource: null,
-    pdfFilename: null,
-  }))
-}
-
-export function staticPublicProjectDetails(): PublicProjectDetail[] {
-  return staticPublicProjects().map((project) => ({
-    ...project,
-    excerpt: project.summary,
     contentType: 'pdf',
     latexSource: null,
     pdfFilename: null,

@@ -39,8 +39,7 @@ export default async function AdminCvPage() {
       phone: cv.phone,
       linkedin: cv.linkedin,
       linkedinUrl: cv.linkedinUrl,
-      programming: cv.programming,
-      methods: cv.methods,
+      skillGroups: cv.skillGroups,
     },
     cvPdf: adminProfile?.cvPdfPathname
       ? { key: adminProfile.cvPdfPathname, filename: adminProfile.cvPdfFilename ?? 'CV.pdf' }

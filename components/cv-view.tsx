@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react'
-import Link from 'next/link'
-import { ArrowUpRight, Download, Mail } from 'lucide-react'
+import { Download, Mail, Plus, X } from 'lucide-react'
 import { LinkedInIcon } from '@/components/social-links'
 import { PageHeader } from '@/components/page-header'
 import { EditableBullets, EditableTags, EditableText } from '@/components/admin/editable'
@@ -9,6 +8,7 @@ import type {
   PublicEducation,
   PublicExperience,
   PublicLanguage,
+  SkillGroup,
 } from '@/lib/queries'
 
 // The body of the /cv page, moved out of app/cv/page.tsx unchanged so the
@@ -17,7 +17,7 @@ import type {
 
 type ProfileFields = Pick<
   PublicCvProfile,
-  'tagline' | 'nationality' | 'location' | 'email' | 'linkedin' | 'programming' | 'methods'
+  'tagline' | 'nationality' | 'location' | 'email' | 'linkedin' | 'skillGroups'
 >
 
 export type CvListEdit<T> = {
@@ -245,46 +245,75 @@ export function CvView({
 
         <Section title="Technical Skills">
           <div className="space-y-6">
-            <div>
-              <p className="text-sm font-medium text-navy">Programming & Tools</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {edit ? (
-                  <EditableTags
-                    tags={cv.programming}
-                    chipClassName={skillChip}
-                    label="skill"
-                    onChange={(programming) => edit.onProfileChange({ programming })}
-                  />
-                ) : (
-                  cv.programming.map((s) => (
-                    <span key={s} className={skillChip}>
-                      {s}
-                    </span>
-                  ))
-                )}
-              </div>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-navy">
-                Econometric & ML Methods
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {edit ? (
-                  <EditableTags
-                    tags={cv.methods}
-                    chipClassName={skillChip}
-                    label="method"
-                    onChange={(methods) => edit.onProfileChange({ methods })}
-                  />
-                ) : (
-                  cv.methods.map((s) => (
-                    <span key={s} className={skillChip}>
-                      {s}
-                    </span>
-                  ))
-                )}
-              </div>
-            </div>
+            {cv.skillGroups.map((group, index) => {
+              const setGroup = (patch: Partial<SkillGroup>) =>
+                edit?.onProfileChange({
+                  skillGroups: cv.skillGroups.map((g, i) => (i === index ? { ...g, ...patch } : g)),
+                })
+              return (
+                <div key={edit ? group.id : group.label} className="group/skillgroup relative">
+                  {edit ? (
+                    <EditableText
+                      as="p"
+                      value={group.label}
+                      label="Category name"
+                      placeholder="Category name"
+                      autoFocus={group.label === ''}
+                      className="text-sm font-medium text-navy"
+                      onChange={(label) => setGroup({ label })}
+                    />
+                  ) : (
+                    <p className="text-sm font-medium text-navy">{group.label}</p>
+                  )}
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {edit ? (
+                      <EditableTags
+                        tags={group.tags}
+                        chipClassName={skillChip}
+                        label="skill"
+                        onChange={(tags) => setGroup({ tags })}
+                      />
+                    ) : (
+                      group.tags.map((s) => (
+                        <span key={s} className={skillChip}>
+                          {s}
+                        </span>
+                      ))
+                    )}
+                  </div>
+                  {edit && (
+                    <button
+                      type="button"
+                      aria-label={`Remove ${group.label || 'category'}`}
+                      title="Remove category"
+                      onClick={() =>
+                        edit.onProfileChange({ skillGroups: cv.skillGroups.filter((_, i) => i !== index) })
+                      }
+                      className="absolute -right-1 -top-1 hidden size-5 items-center justify-center rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive group-hover/skillgroup:flex"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  )}
+                </div>
+              )
+            })}
+            {edit && (
+              <button
+                type="button"
+                onClick={() =>
+                  edit.onProfileChange({
+                    skillGroups: [
+                      ...cv.skillGroups,
+                      { id: `skill-${Date.now().toString(36)}`, label: '', tags: [] },
+                    ],
+                  })
+                }
+                className="inline-flex items-center gap-1 rounded-full border border-dashed border-steel/40 px-3 py-1.5 text-xs font-medium text-steel-700 transition-colors hover:border-steel hover:bg-steel/10"
+              >
+                <Plus className="size-3" />
+                Add skill category
+              </button>
+            )}
           </div>
         </Section>
 
@@ -308,27 +337,6 @@ export function CvView({
             {edit?.languages.after}
           </div>
         </Section>
-
-        <div className="border-t border-border py-12 md:py-16">
-          <div className="flex flex-col items-start gap-4 rounded-2xl bg-navy p-8 text-white md:flex-row md:items-center md:justify-between md:p-10">
-            <div>
-              <h2 className="font-serif text-2xl tracking-tight md:text-3xl">
-                Selected projects live on the site
-              </h2>
-              <p className="mt-2 max-w-lg text-sm text-white/70">
-                Interactive maps, forecasting dashboards, and quantitative tools
-                are deployed in the Projects section.
-              </p>
-            </div>
-            <Link
-              href="/projects"
-              className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-medium text-navy transition-transform hover:-translate-y-0.5"
-            >
-              View projects
-              <ArrowUpRight className="size-4" />
-            </Link>
-          </div>
-        </div>
       </div>
     </main>
   )

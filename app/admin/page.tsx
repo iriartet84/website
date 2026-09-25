@@ -12,6 +12,8 @@ import {
 import { db } from '@/lib/db'
 import { siteContent } from '@/lib/db/schema'
 import { isS3Configured } from '@/lib/blobs'
+import { outputHealth } from '@/lib/project-meta'
+import { parseProjectOutput } from '@/lib/project-output'
 
 // Admin overview: one card per editable public page. The editors themselves
 // live at /admin/home, /admin/papers, /admin/projects and /admin/cv.
@@ -29,6 +31,29 @@ function countLabel(rows: { published: boolean }[], noun: string) {
   const shown = rows.length - hidden
   if (rows.length === 0) return `No ${noun}s saved yet — the public page shows the built-in examples`
   return `${shown} published${hidden ? ` · ${hidden} hidden` : ''}`
+}
+
+type HubProject = {
+  published: boolean
+  featured: boolean
+  outputUrl: string | null
+  output: unknown
+  outputError: string | null
+  updateFrequency: string | null
+}
+
+function projectStatus(rows: HubProject[]) {
+  const parts = [countLabel(rows, 'project')]
+  const featured = rows.filter((row) => row.published && row.featured).length
+  if (featured) parts.push(`${featured} featured`)
+  const health = rows.map((row) =>
+    outputHealth({ ...row, output: parseProjectOutput(row.output).data ?? null }),
+  )
+  const failing = health.filter((h) => h === 'failing').length
+  const overdue = health.filter((h) => h === 'overdue').length
+  if (failing) parts.push(`${failing} with failing live data`)
+  if (overdue) parts.push(`${overdue} overdue`)
+  return parts.join(' · ')
 }
 
 export default async function AdminPage({
@@ -63,7 +88,8 @@ export default async function AdminPage({
     {
       href: '/admin/home',
       title: 'Home',
-      description: 'Hero introduction, the Research Focus carousel (with images) and the Skillset cards.',
+      description:
+        'Hero introduction, Featured Projects (or the Research Focus carousel while none is featured) and the Skillset cards.',
       status: home.failed
         ? 'Could not load — has `npm run db:push` been run for site_content?'
         : home.value
@@ -79,8 +105,13 @@ export default async function AdminPage({
     {
       href: '/admin/projects',
       title: 'Projects',
-      description: 'The project cards: titles, summaries, status, preview style, tags and documents.',
-      status: projects.failed ? 'Could not load projects' : countLabel(projects.value, 'project'),
+      description:
+        'Project cards (sector, type, languages, APIs, featured on Home) and each project’s page: write-up, charts, links, live data and document.',
+      status: projects.failed
+        ? 'Could not load projects'
+        : projects.value.length === 0
+          ? 'No projects yet — the public page shows “coming soon”'
+          : projectStatus(projects.value),
     },
     {
       href: '/admin/cv',

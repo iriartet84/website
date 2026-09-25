@@ -19,6 +19,7 @@ import { fileUrl, uploadFile, validateFile } from '@/components/admin/upload'
 import { focusItem, moveItem, newClientKey, useEditorState } from '@/components/admin/use-editor-state'
 import { saveCvPageAction } from '@/app/admin/editor-actions'
 import type { CvPdfChange } from '@/lib/validations'
+import type { SkillGroup } from '@/lib/queries'
 
 // /admin/cv: the public CV page rendered with the same component
 // (components/cv-view.tsx), in edit mode — including the "Download CV"
@@ -32,8 +33,7 @@ type Profile = {
   phone: string
   linkedin: string
   linkedinUrl: string
-  programming: string[]
-  methods: string[]
+  skillGroups: SkillGroup[]
 }
 
 type ExperienceFields = {
@@ -233,8 +233,9 @@ export function CvEditor({ data }: { data: CvEditorData }) {
       const result = await saveCvPageAction({
         profile: {
           ...state.profile,
-          programming: state.profile.programming.map((s) => s.trim()).filter(Boolean),
-          methods: state.profile.methods.map((s) => s.trim()).filter(Boolean),
+          skillGroups: state.profile.skillGroups
+            .map((group) => ({ ...group, label: group.label.trim(), tags: group.tags.map((s) => s.trim()).filter(Boolean) }))
+            .filter((group) => group.label),
         },
         cvPdf,
         experience: list(state.experience, (row) => ({

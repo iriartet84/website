@@ -1,4 +1,12 @@
 import { z } from "zod"
+import {
+  projectLinkSchema,
+  projectModes,
+  projectSectionSchema,
+  projectTypes,
+  stackListSchema,
+  updateFrequencies,
+} from "@/lib/project-meta"
 
 export const MAX_PDF_BYTES = 8 * 1024 * 1024
 export const MAX_LATEX_CHARS = 200_000
@@ -171,6 +179,12 @@ export const paperItemSchema = z.object({
   document: documentChangeSchema,
 })
 
+const values = <T extends { value: string }>(list: readonly T[]) =>
+  list.map((item) => item.value) as [T["value"], ...T["value"][]]
+
+// Card fields, edited on /admin/projects. The document and the page's
+// sections, links and live-data settings are edited on the project's own
+// page editor (projectPagePayloadSchema below).
 export const projectItemSchema = z.object({
   clientKey: clientKeySchema,
   id: rowIdSchema,
@@ -183,8 +197,33 @@ export const projectItemSchema = z.object({
   summary: entryDescription,
   tags: tagListSchema,
   published: z.boolean(),
-  document: documentChangeSchema,
+  projectType: z.enum(values(projectTypes)),
+  mode: z.enum(values(projectModes)),
+  languages: stackListSchema,
+  apis: stackListSchema,
+  featured: z.boolean(),
+  document: documentChangeSchema.default({ kind: "keep" }),
 })
+
+// "" means "not set".
+const optionalHttpsUrl = z
+  .string()
+  .trim()
+  .max(1000)
+  .refine((value) => value === "" || /^https:\/\/[^\s]+$/.test(value), "Must be an https:// address")
+
+export const projectPagePayloadSchema = projectItemSchema.omit({ clientKey: true, id: true }).extend({
+  id: z.number().int().positive(),
+  links: z.array(projectLinkSchema).max(12, "Too many links (12 max)"),
+  outputUrl: optionalHttpsUrl,
+  embedUrl: optionalHttpsUrl,
+  updateFrequency: z.enum(values(updateFrequencies)).nullable(),
+  sections: z
+    .array(projectSectionSchema)
+    .max(30, "Too many sections (30 max)")
+    .refine((sections) => new Set(sections.map((s) => s.id)).size === sections.length, "Section ids must be unique"),
+})
+export type ProjectPagePayload = z.input<typeof projectPagePayloadSchema>
 
 export const experienceItemSchema = z.object({
   clientKey: clientKeySchema,
@@ -217,6 +256,13 @@ export const languageItemSchema = z.object({
   published: z.boolean(),
 })
 
+export const skillGroupSchema = z.object({
+  id: z.string().min(1).max(80),
+  label: z.string().trim().min(1, "Category name can't be empty").max(60, "Category name is too long"),
+  tags: tagListSchema.max(40, "Too many skills (40 max)"),
+})
+export type SkillGroupInput = z.infer<typeof skillGroupSchema>
+
 export const cvProfileEditorSchema = z.object({
   tagline: z
     .string()
@@ -233,8 +279,12 @@ export const cvProfileEditorSchema = z.object({
     .trim()
     .max(300)
     .refine((v) => v === "" || /^https?:\/\//.test(v), "LinkedIn URL must start with https://"),
-  programming: tagListSchema.max(40, "Too many skills (40 max)"),
-  methods: tagListSchema.max(40, "Too many skills (40 max)"),
+  // Any number of named skill categories (Programming & Tools, Econometric
+  // & ML Methods, and any others added from the editor).
+  skillGroups: z
+    .array(skillGroupSchema)
+    .max(12, "Too many skill categories (12 max)")
+    .refine((groups) => new Set(groups.map((g) => g.id)).size === groups.length, "Skill category ids must be unique"),
 })
 
 export const cvPdfChangeSchema = z.discriminatedUnion("kind", [

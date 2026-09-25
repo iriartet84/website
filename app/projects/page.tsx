@@ -1,7 +1,8 @@
 import type { Metadata } from 'next'
 import { PageHeader } from '@/components/page-header'
-import { ProjectCard } from '@/components/project-card'
+import { ProjectsComingSoon, ProjectsList } from '@/components/projects-list'
 import { getPublishedProjects } from '@/lib/queries'
+import { projectSectors } from '@/lib/project-meta'
 import { getListPageContent } from '@/lib/site-content'
 
 export const revalidate = 3600
@@ -42,16 +43,9 @@ export default async function ProjectsPage() {
             Projects could not be loaded right now. Please try again shortly.
           </p>
         ) : projects.length === 0 ? (
-          <p className="text-muted-foreground">
-            Projects will appear here once they are published from the admin
-            dashboard.
-          </p>
+          <ProjectsComingSoon />
         ) : (
-          <div className="grid gap-6 md:grid-cols-2">
-            {projects.map((project) => (
-              <ProjectCard key={project.slug} project={project} />
-            ))}
-          </div>
+          <ProjectsList projects={projects} sectors={projectSectors} />
         )}
 
         <p className="mt-12 text-center text-sm text-muted-foreground">

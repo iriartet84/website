@@ -106,3 +106,140 @@
     pointer-events: none;
   }
 }
+
+/* Project write-ups (components/markdown.tsx): Markdown + KaTeX maths. */
+@layer components {
+  .project-prose {
+    color: var(--foreground);
+    font-size: 1rem;
+    line-height: 1.75;
+  }
+  .project-prose > * + * {
+    margin-top: 1.1em;
+  }
+  .project-prose h3,
+  .project-prose h4,
+  .project-prose h5,
+  .project-prose h6 {
+    color: var(--navy);
+    font-weight: 600;
+    line-height: 1.35;
+    margin-top: 1.8em;
+  }
+  .project-prose h3 {
+    font-size: 1.25rem;
+  }
+  .project-prose h4 {
+    font-size: 1.075rem;
+  }
+  .project-prose h5,
+  .project-prose h6 {
+    font-size: 1rem;
+  }
+  .project-prose a {
+    color: var(--steel-700);
+    font-weight: 500;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    text-decoration-color: color-mix(in oklch, var(--steel-700) 40%, transparent);
+  }
+  .project-prose a:hover {
+    color: var(--navy);
+  }
+  .project-prose strong {
+    color: var(--navy);
+    font-weight: 600;
+  }
+  .project-prose ul,
+  .project-prose ol {
+    padding-left: 1.4em;
+  }
+  .project-prose ul {
+    list-style: disc;
+  }
+  .project-prose ol {
+    list-style: decimal;
+  }
+  .project-prose li + li {
+    margin-top: 0.35em;
+  }
+  .project-prose li::marker {
+    color: var(--steel);
+  }
+  .project-prose blockquote {
+    border-left: 3px solid var(--border);
+    padding-left: 1em;
+    color: var(--muted-foreground);
+  }
+  .project-prose code {
+    font-size: 0.875em;
+    background: var(--secondary);
+    border-radius: 4px;
+    padding: 0.1em 0.35em;
+  }
+  .project-prose pre {
+    overflow-x: auto;
+    background: var(--navy);
+    color: white;
+    border-radius: 12px;
+    padding: 1em 1.2em;
+    font-size: 0.85rem;
+    line-height: 1.6;
+  }
+  .project-prose pre code {
+    background: none;
+    padding: 0;
+    color: inherit;
+  }
+  .project-prose hr {
+    border-color: var(--border);
+  }
+  .project-prose img {
+    border-radius: 12px;
+    max-width: 100%;
+  }
+  .project-prose-table {
+    overflow-x: auto;
+  }
+  .project-prose table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .project-prose th,
+  .project-prose td {
+    border-bottom: 1px solid var(--border);
+    padding: 0.5em 0.75em;
+    text-align: left;
+  }
+  .project-prose th {
+    color: var(--muted-foreground);
+    font-weight: 500;
+  }
+  /* Long display equations scroll instead of overflowing on phones. */
+  .project-prose .katex-display {
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0.25em 0;
+  }
+  .project-prose .katex {
+    font-size: 1.08em;
+  }
+}
+
+/* Featured Projects (components/featured-projects.tsx): the active tab's
+   progress bar while the tabs rotate. */
+@keyframes featured-progress {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+.featured-progress {
+  animation-name: featured-progress;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}

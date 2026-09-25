@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ArrowRight, ChevronDown } from 'lucide-react'
+import { ArrowRight } from 'lucide-react'
 import { EditableText } from '@/components/admin/editable'
 import type { HomeContent } from '@/lib/site-content-shared'
 
@@ -120,11 +120,6 @@ export function Hero({
             </>
           )}
         </div>
-      </div>
-
-      <div className="absolute inset-x-0 bottom-8 flex flex-col items-center gap-2 text-muted-foreground">
-        <span className="text-xs uppercase tracking-[0.25em]">Scroll</span>
-        <ChevronDown className="size-4 animate-bounce" />
       </div>
     </section>
   )

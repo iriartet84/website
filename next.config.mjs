@@ -25,6 +25,27 @@ function storageOrigin() {
 
 const embedSources = ["'self'", storageOrigin()].filter(Boolean).join(' ')
 
+// Origins of project apps that project pages may frame (the "Live app"
+// section, components/project-embed.tsx), from PROJECT_EMBED_ORIGINS — a
+// comma-separated list of https origins, e.g. "https://iriartet84.github.io".
+// Same parsing as parseEmbedOrigins in lib/project-meta.ts. Read at build
+// time, like S3_ENDPOINT above: adding an origin needs a redeploy.
+function projectEmbedOrigins() {
+  return (process.env.PROJECT_EMBED_ORIGINS ?? '')
+    .split(/[\s,]+/)
+    .map((item) => {
+      try {
+        const url = new URL(item)
+        return url.protocol === 'https:' ? url.origin : null
+      } catch {
+        return null
+      }
+    })
+    .filter(Boolean)
+}
+
+const frameSources = [embedSources, ...projectEmbedOrigins()].join(' ')
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   images: {
@@ -71,7 +92,7 @@ const nextConfig = {
               "font-src 'self' data:",
               "connect-src 'self' https:",
               `object-src ${embedSources}`,
-              `frame-src ${embedSources}`,
+              `frame-src ${frameSources}`,
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "form-action 'self'",

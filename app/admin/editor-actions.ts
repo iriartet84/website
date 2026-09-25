@@ -22,9 +22,13 @@ import {
   MAX_PDF_BYTES,
   cvPagePayloadSchema,
   papersPagePayloadSchema,
+  projectPagePayloadSchema,
   projectsPagePayloadSchema,
   type DocumentChange,
 } from "@/lib/validations"
+import { defaultSections } from "@/lib/project-meta"
+import { parseProjectOutput, type ProjectOutput } from "@/lib/project-output"
+import { checkOutputUrl, fetchProjectOutput, refreshRow, revalidateProject } from "@/lib/project-refresh"
 import {
   homeContentSchema,
   pageHeaderSchema,
@@ -416,6 +420,11 @@ export async function saveProjectsPageAction(
           status: item.status,
           kind: item.kind,
           published: item.published,
+          projectType: item.projectType,
+          mode: item.mode,
+          languages: item.languages,
+          apis: item.apis,
+          featured: item.featured,
           sortOrder: index,
           ...(doc.change
             ? {
@@ -433,7 +442,8 @@ export async function saveProjectsPageAction(
             .set({ ...fields, updatedAt: new Date() })
             .where(eq(projectEntries.id, item.id))
         } else {
-          await tx.insert(projectEntries).values({ ...fields, userId: session.user.id })
+          // New projects start with the standard page layout.
+          await tx.insert(projectEntries).values({ ...fields, sections: defaultSections(), userId: session.user.id })
         }
       }
       await tx
@@ -459,6 +469,162 @@ export async function saveProjectsPageAction(
 
   revalidateLists()
   return { ok: true }
+}
+
+// ---- One project's page (/admin/projects/[id]) ---------------------------------
+
+export type ProjectPageSaveResult = SaveResult & {
+  // Set when the save (re)fetched the project's output file.
+  output?: { ok: true; value: ProjectOutput } | { ok: false; error: string }
+}
+
+export async function saveProjectPageAction(input: unknown): Promise<ProjectPageSaveResult> {
+  const session = await requireAdmin()
+  if (!session) return SIGNED_OUT
+
+  const rawSections = Array.isArray((input as { sections?: unknown })?.sections)
+    ? ((input as { sections: unknown[] }).sections)
+    : []
+  const sectionLabels = rawSections.map((section, i) => {
+    const s = section as { id?: string; heading?: string; type?: string }
+    return { clientKey: String(s?.id ?? i), label: quoted(s?.heading ?? "", `Section ${i + 1}`) }
+  })
+  const parsed = projectPagePayloadSchema.safeParse(input)
+  if (!parsed.success) return describeIssue(parsed.error, { sections: sectionLabels }, "Project")
+  const page = parsed.data
+
+  if (page.outputUrl) {
+    const problem = checkOutputUrl(page.outputUrl)
+    if (problem) return { ok: false, error: `Output URL: ${problem}`, clientKey: "live-data" }
+  }
+
+  const doc = await resolveDocument(page.document, quoted(page.title, "This project"))
+  if ("error" in doc) return { ok: false, error: doc.error, clientKey: "document" }
+
+  let current: { slug: string; outputUrl: string | null } | undefined
+  try {
+    ;[current] = await db
+      .select({ slug: projectEntries.slug, outputUrl: projectEntries.outputUrl })
+      .from(projectEntries)
+      .where(eq(projectEntries.id, page.id))
+      .limit(1)
+  } catch (error) {
+    return saveFailed(error)
+  }
+  if (!current) return { ok: false, error: "This project no longer exists — it may have been deleted in another tab." }
+
+  const outputUrl = page.outputUrl || null
+  const urlChanged = outputUrl !== current.outputUrl
+
+  try {
+    await db
+      .update(projectEntries)
+      .set({
+        title: page.title,
+        slug: page.slug,
+        category: page.category,
+        date: new Date(`${page.date}T00:00:00Z`),
+        summary: page.summary,
+        excerpt: page.summary,
+        tags: page.tags.join(", "),
+        status: page.status,
+        kind: page.kind,
+        published: page.published,
+        projectType: page.projectType,
+        mode: page.mode,
+        languages: page.languages,
+        apis: page.apis,
+        featured: page.featured,
+        links: page.links,
+        outputUrl,
+        embedUrl: page.embedUrl || null,
+        updateFrequency: page.updateFrequency,
+        sections: page.sections,
+        updatedAt: new Date(),
+        // A different output URL means a different file: the stored copy
+        // of the old one no longer applies.
+        ...(urlChanged ? { output: null, outputError: null, outputCheckedAt: null } : {}),
+        ...(doc.change
+          ? {
+              contentType: doc.contentType,
+              pdfUrl: doc.pdfUrl,
+              pdfPathname: doc.pdfPathname,
+              pdfFilename: doc.pdfFilename,
+              latexSource: doc.latexSource,
+            }
+          : {}),
+      })
+      .where(eq(projectEntries.id, page.id))
+  } catch (error) {
+    const slug = uniqueViolation(error)
+    if (slug !== null) return { ok: false, error: `The slug “${slug}” is already used by another project.` }
+    return saveFailed(error)
+  }
+
+  let output: ProjectPageSaveResult["output"]
+  if (urlChanged && outputUrl) {
+    const result = await refreshRow({ id: page.id, slug: page.slug, outputUrl, output: null, outputError: null }).catch(
+      () => ({ ok: false as const, error: "Couldn't store the output." }),
+    )
+    if (result.ok) {
+      const [row] = await db
+        .select({ output: projectEntries.output })
+        .from(projectEntries)
+        .where(eq(projectEntries.id, page.id))
+        .limit(1)
+      const stored = parseProjectOutput(row?.output)
+      output = stored.success ? { ok: true, value: stored.data } : { ok: false, error: "Couldn't read the stored output." }
+    } else {
+      output = { ok: false, error: result.error ?? "The output file couldn't be fetched." }
+    }
+  }
+
+  revalidateLists()
+  if (current.slug !== page.slug) revalidatePath(`/projects/${current.slug}`)
+  return { ok: true, output }
+}
+
+export type OutputCheckResult = { ok: true; output: ProjectOutput; stored: boolean } | { ok: false; error: string }
+
+// "Check now" in the project page editor. For the URL that's already
+// saved, this is a real refresh (fetched, validated, stored, pages
+// revalidated); for a URL typed but not saved yet, it only validates, and
+// the file is stored on save.
+export async function checkProjectOutputAction(id: number, url: string): Promise<OutputCheckResult> {
+  const session = await requireAdmin()
+  if (!session) return { ok: false, error: "Your session has ended. Sign in again in another tab, then check again." }
+
+  const trimmed = typeof url === "string" ? url.trim() : ""
+  if (!trimmed) return { ok: false, error: "Enter the output file's URL first." }
+
+  const [row] = await db
+    .select({
+      id: projectEntries.id,
+      slug: projectEntries.slug,
+      outputUrl: projectEntries.outputUrl,
+      output: projectEntries.output,
+      outputError: projectEntries.outputError,
+    })
+    .from(projectEntries)
+    .where(eq(projectEntries.id, Number(id)))
+    .limit(1)
+    .catch(() => [])
+
+  if (row && row.outputUrl === trimmed) {
+    const result = await refreshRow(row)
+    if (result.changed) revalidateProject(row.slug)
+    if (!result.ok) return { ok: false, error: result.error ?? "The output file couldn't be fetched." }
+    const [fresh] = await db
+      .select({ output: projectEntries.output })
+      .from(projectEntries)
+      .where(eq(projectEntries.id, row.id))
+      .limit(1)
+    const stored = parseProjectOutput(fresh?.output)
+    return stored.success ? { ok: true, output: stored.data, stored: true } : { ok: false, error: "Couldn't read the stored output." }
+  }
+
+  const result = await fetchProjectOutput(trimmed)
+  return result.ok ? { ok: true, output: result.output, stored: false } : result
 }
 
 // ---- CV ---------------------------------------------------------------------
@@ -508,8 +674,7 @@ export async function saveCvPageAction(input: unknown): Promise<SaveResult> {
     phone: profile.phone,
     linkedin: profile.linkedin,
     linkedinUrl: profile.linkedinUrl,
-    programmingSkills: profile.programming.join("\n"),
-    methodSkills: profile.methods.join("\n"),
+    skillGroups: profile.skillGroups,
     ...pdfFields,
     updatedAt: new Date(),
   }

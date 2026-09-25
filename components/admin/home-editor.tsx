@@ -1,9 +1,11 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ExternalLink, ImageUp, Link2, Plus, RotateCcw } from 'lucide-react'
+import Link from 'next/link'
+import { ExternalLink, ImageUp, Link2, Plus, RotateCcw, Star } from 'lucide-react'
 import { Hero } from '@/components/hero'
 import { ResearchShowcase } from '@/components/research-showcase'
+import { FeaturedProjects } from '@/components/featured-projects'
 import { Skillset } from '@/components/skillset'
 import { EditingBanner } from '@/components/admin/admin-bar'
 import {
@@ -19,10 +21,15 @@ import {
 import { uploadFile, validateFile } from '@/components/admin/upload'
 import { focusItem, moveItem, newClientKey, useEditorState } from '@/components/admin/use-editor-state'
 import { saveHomeContentAction } from '@/app/admin/editor-actions'
+import { confirmLeaveWithUnsavedChanges } from '@/components/admin/unsaved-guard'
 import type { HomeContent, HomeResearchSection } from '@/lib/site-content-shared'
+import type { PublicProject } from '@/lib/public-content'
 
 // /admin/home: the public home page rendered with the same components
-// (Hero, ResearchShowcase, Skillset), in edit mode. Research card images
+// (Hero, ResearchShowcase or FeaturedProjects, Skillset), in edit mode.
+// Once any published project is featured (chosen on /admin/projects),
+// Featured Projects replaces Research Focus on the public page; Research
+// Focus stays editable here behind a toggle. Research card images
 // can be replaced: a new image is previewed locally, then uploaded to the
 // private bucket through a presigned URL when the page is saved.
 
@@ -36,9 +43,10 @@ function build(content: HomeContent): State {
   return { content, images: {} }
 }
 
-export function HomeEditor({ content: initial }: { content: HomeContent }) {
+export function HomeEditor({ content: initial, featured }: { content: HomeContent; featured: PublicProject[] }) {
   const { state, setState, dirty, status, setStatus, discard, markSaved } = useEditorState(initial, build)
   const [focusCard, setFocusCard] = useState<number | null>(null)
+  const [showResearch, setShowResearch] = useState(false)
   const errorKey = status.kind === 'error' ? status.clientKey : undefined
   const { content } = state
 
@@ -131,99 +139,142 @@ export function HomeEditor({ content: initial }: { content: HomeContent }) {
           }}
         />
 
-        <ResearchShowcase
-          content={displayResearch}
-          edit={{
-            focusIndex: focusCard,
-            onHeaderChange: (field, value) =>
-              setContent((c) => ({ ...c, research: { ...c.research, [field]: value } })),
-            onItemChange: updateSection,
-            headerActions: (
-              <button
-                type="button"
-                onClick={() => {
-                  const id = newClientKey('research')
-                  setContent((c) => ({
-                    ...c,
-                    research: {
-                      ...c.research,
-                      sections: [
-                        ...c.research.sections,
-                        { id, label: 'New area', title: 'New research area', description: 'Describe this research area.', image: '' },
-                      ],
-                    },
-                  }))
-                  setFocusCard(sectionCount)
-                }}
-                className="inline-flex h-10 items-center gap-1.5 rounded-full border border-dashed border-steel/40 px-4 font-sans text-sm font-medium text-steel-700 transition-colors hover:border-steel hover:bg-steel/5"
-              >
-                <Plus className="size-4" />
-                Add card
-              </button>
-            ),
-            wrapItem: (section, index, card) => (
-              <EditableItem
-                id={`item-${section.id}`}
-                highlighted={errorKey === section.id}
-                className="h-full w-full max-w-md"
-                toolbarClassName="top-3 right-3"
-                toolbar={
-                  <ItemToolbar
-                    itemLabel="card"
-                    direction="horizontal"
-                    canMoveBack={index > 0}
-                    canMoveForward={index < sectionCount - 1}
-                    onMoveBack={() => {
-                      setContent((c) => ({ ...c, research: { ...c.research, sections: moveItem(c.research.sections, index, index - 1) } }))
-                      setFocusCard(index - 1)
+        {featured.length > 0 && (
+          <>
+            <FeaturedProjects
+              content={content.featured}
+              projects={featured}
+              edit={{
+                onHeaderChange: (field, value) =>
+                  setContent((c) => ({ ...c, featured: { ...c.featured, [field]: value } })),
+                headerActions: (
+                  <Link
+                    href="/admin/projects"
+                    onClick={(event) => {
+                      if (!confirmLeaveWithUnsavedChanges()) event.preventDefault()
                     }}
-                    onMoveForward={() => {
-                      setContent((c) => ({ ...c, research: { ...c.research, sections: moveItem(c.research.sections, index, index + 1) } }))
-                      setFocusCard(index + 1)
-                    }}
-                    onRemove={() => {
-                      setContent((c) => ({
-                        ...c,
-                        research: { ...c.research, sections: c.research.sections.filter((s) => s.id !== section.id) },
-                      }))
-                      setState((s) => {
-                        const images = { ...s.images }
-                        delete images[section.id]
-                        return { ...s, images }
-                      })
-                      setFocusCard(Math.max(0, index - 1))
-                    }}
-                  />
-                }
-              >
-                {card}
-              </EditableItem>
-            ),
-            imageControl: (section, index) => (
-              <ImageControl
-                hasPending={Boolean(state.images[section.id])}
-                image={section.image}
-                onPick={(file) => setState((s) => ({ ...s, images: { ...s.images, [section.id]: file } }))}
-                onUndo={() =>
-                  setState((s) => {
-                    const images = { ...s.images }
-                    delete images[section.id]
-                    return { ...s, images }
-                  })
-                }
-                onUrl={(image) => {
-                  updateSection(index, { image })
-                  setState((s) => {
-                    const images = { ...s.images }
-                    delete images[section.id]
-                    return { ...s, images }
-                  })
-                }}
-                storedImage={content.research.sections[index]?.image ?? ''}
-              />
-            ),
-          }}
-        />
+                    className="inline-flex h-10 items-center gap-1.5 rounded-full border border-dashed border-steel/40 px-4 font-sans text-sm font-medium text-steel-700 transition-colors hover:border-steel hover:bg-steel/5"
+                  >
+                    <Star className="size-4" />
+                    Choose featured projects
+                  </Link>
+                ),
+              }}
+            />
+            <div className="border-y border-steel/20 bg-steel/5">
+              <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3 font-sans text-xs text-steel-700 sm:px-8">
+                <span>
+                  Research Focus is hidden from visitors while projects are featured. It comes back if you
+                  un-feature them all.
+                </span>
+                <button
+                  type="button"
+                  aria-expanded={showResearch}
+                  onClick={() => setShowResearch((value) => !value)}
+                  className="font-semibold underline-offset-2 hover:underline"
+                >
+                  {showResearch ? 'Hide Research Focus' : 'Edit Research Focus anyway'}
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+
+        {(featured.length === 0 || showResearch) && (
+          <ResearchShowcase
+            content={displayResearch}
+            edit={{
+              focusIndex: focusCard,
+              onHeaderChange: (field, value) =>
+                setContent((c) => ({ ...c, research: { ...c.research, [field]: value } })),
+              onItemChange: updateSection,
+              headerActions: (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const id = newClientKey('research')
+                    setContent((c) => ({
+                      ...c,
+                      research: {
+                        ...c.research,
+                        sections: [
+                          ...c.research.sections,
+                          { id, label: 'New area', title: 'New research area', description: 'Describe this research area.', image: '' },
+                        ],
+                      },
+                    }))
+                    setFocusCard(sectionCount)
+                  }}
+                  className="inline-flex h-10 items-center gap-1.5 rounded-full border border-dashed border-steel/40 px-4 font-sans text-sm font-medium text-steel-700 transition-colors hover:border-steel hover:bg-steel/5"
+                >
+                  <Plus className="size-4" />
+                  Add card
+                </button>
+              ),
+              wrapItem: (section, index, card) => (
+                <EditableItem
+                  id={`item-${section.id}`}
+                  highlighted={errorKey === section.id}
+                  className="h-full w-full max-w-md"
+                  toolbarClassName="top-3 right-3"
+                  toolbar={
+                    <ItemToolbar
+                      itemLabel="card"
+                      direction="horizontal"
+                      canMoveBack={index > 0}
+                      canMoveForward={index < sectionCount - 1}
+                      onMoveBack={() => {
+                        setContent((c) => ({ ...c, research: { ...c.research, sections: moveItem(c.research.sections, index, index - 1) } }))
+                        setFocusCard(index - 1)
+                      }}
+                      onMoveForward={() => {
+                        setContent((c) => ({ ...c, research: { ...c.research, sections: moveItem(c.research.sections, index, index + 1) } }))
+                        setFocusCard(index + 1)
+                      }}
+                      onRemove={() => {
+                        setContent((c) => ({
+                          ...c,
+                          research: { ...c.research, sections: c.research.sections.filter((s) => s.id !== section.id) },
+                        }))
+                        setState((s) => {
+                          const images = { ...s.images }
+                          delete images[section.id]
+                          return { ...s, images }
+                        })
+                        setFocusCard(Math.max(0, index - 1))
+                      }}
+                    />
+                  }
+                >
+                  {card}
+                </EditableItem>
+              ),
+              imageControl: (section, index) => (
+                <ImageControl
+                  hasPending={Boolean(state.images[section.id])}
+                  image={section.image}
+                  onPick={(file) => setState((s) => ({ ...s, images: { ...s.images, [section.id]: file } }))}
+                  onUndo={() =>
+                    setState((s) => {
+                      const images = { ...s.images }
+                      delete images[section.id]
+                      return { ...s, images }
+                    })
+                  }
+                  onUrl={(image) => {
+                    updateSection(index, { image })
+                    setState((s) => {
+                      const images = { ...s.images }
+                      delete images[section.id]
+                      return { ...s, images }
+                    })
+                  }}
+                  storedImage={content.research.sections[index]?.image ?? ''}
+                />
+              ),
+            }}
+          />
+        )}
 
         <Skillset
           content={content.skills}

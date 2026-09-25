@@ -142,7 +142,7 @@ export function EditableSelect({
   className,
 }: {
   value: string
-  options: readonly string[] | { value: string; label: string }[]
+  options: readonly string[] | readonly { value: string; label: string }[]
   onChange: (value: string) => void
   label: string
   children: ReactNode

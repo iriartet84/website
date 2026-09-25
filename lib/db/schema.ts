@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm"
 import { pgTable, text, timestamp, boolean, serial, integer, jsonb } from "drizzle-orm/pg-core"
 
 export const user = pgTable("user", {
@@ -93,6 +94,31 @@ export const projectEntries = pgTable("project_entries", {
   latexSource: text("latexSource"),
   published: boolean("published").notNull().default(true),
   sortOrder: integer("sortOrder").notNull().default(0),
+  // ---- Live projects (see lib/project-meta.ts and lib/project-output.ts).
+  // All additive with defaults, so existing rows keep working unchanged.
+  // What it is / how visitors experience it. `category` is the sector and
+  // `status` the lifecycle; `kind` only picks the card's preview icon.
+  projectType: text("projectType").notNull().default("analysis"),
+  mode: text("mode").notNull().default("static"),
+  featured: boolean("featured").notNull().default(false),
+  // Stack shown to visitors: string arrays ("Python", "FRED API", ...).
+  // `tags` stays as the free-form tools/methods list.
+  languages: jsonb("languages").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  apis: jsonb("apis").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  links: jsonb("links").$type<{ kind: string; label: string; url: string }[]>().notNull().default(sql`'[]'::jsonb`),
+  // The project's published output file (portfolio-output/1) and optional
+  // embeddable app, both hosted by the project itself (e.g. GitHub Pages).
+  outputUrl: text("outputUrl"),
+  embedUrl: text("embedUrl"),
+  updateFrequency: text("updateFrequency"),
+  // Page layout: typed sections (text/Markdown, figures, chart, app, ...).
+  // Empty = the original single-document page.
+  sections: jsonb("sections").$type<unknown[]>().notNull().default(sql`'[]'::jsonb`),
+  // Last valid output fetched from outputUrl, and the latest fetch attempt.
+  // A failed fetch sets outputError but never clears `output`.
+  output: jsonb("output"),
+  outputCheckedAt: timestamp("outputCheckedAt"),
+  outputError: text("outputError"),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
 })
@@ -151,8 +177,18 @@ export const cvProfile = pgTable("cv_profile", {
   phone: text("phone").notNull().default(""),
   linkedin: text("linkedin").notNull().default(""),
   linkedinUrl: text("linkedinUrl").notNull().default(""),
+  // Deprecated in favour of skillGroups below; kept (unwritten from the
+  // editor going forward) so any previously saved data stays readable as a
+  // fallback until the profile is re-saved.
   programmingSkills: text("programmingSkills").notNull().default(""), // newline-separated
   methodSkills: text("methodSkills").notNull().default(""), // newline-separated
+  // Technical Skills, as any number of named categories (Programming &
+  // Tools, Econometric & ML Methods, and whatever else is added — e.g.
+  // Financial Modelling). Additive/optional like projectEntries' jsonb
+  // columns: an empty array falls back to the two columns above, then to
+  // the built-in defaults (lib/content.ts) — see getCvProfile in
+  // lib/queries.ts.
+  skillGroups: jsonb("skillGroups").$type<{ id: string; label: string; tags: string[] }[]>().notNull().default(sql`'[]'::jsonb`),
   // The active CV PDF: cvPdfPathname is the storage key (see lib/blobs.ts),
   // resolved to a download URL at request time rather than stored as a
   // fixed URL, since the bucket is private and reads go through a

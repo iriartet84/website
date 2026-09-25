@@ -11,9 +11,7 @@ import {
 import {
   paperCategories,
   staticPublicPapers,
-  staticPublicProjects,
   staticPublicPaperDetails,
-  staticPublicProjectDetails,
   type PublicPaper,
   type PublicProject,
   type PublicPaperDetail,
@@ -26,7 +24,16 @@ import {
   profile as staticProfile,
   cvSkills as staticCvSkills,
 } from "@/lib/content"
-import { parseTags, parseDetails } from "@/lib/validations"
+import { parseTags, parseDetails, skillGroupSchema, type SkillGroupInput } from "@/lib/validations"
+import { parseProjectOutput, type ProjectOutput } from "@/lib/project-output"
+import {
+  projectLinkSchema,
+  projectSectionSchema,
+  stackListSchema,
+  summariseOutput,
+  type ProjectLink,
+  type ProjectSection,
+} from "@/lib/project-meta"
 
 // The cv_profile table only ever has this one row.
 const CV_PROFILE_ID = 1
@@ -150,6 +157,8 @@ export async function listAdminLanguages() {
   return db.select().from(languageEntries).orderBy(languageEntries.sortOrder)
 }
 
+export type SkillGroup = { id: string; label: string; tags: string[] }
+
 export type PublicCvProfile = {
   tagline: string
   nationality: string
@@ -158,14 +167,18 @@ export type PublicCvProfile = {
   phone: string
   linkedin: string
   linkedinUrl: string
-  programming: string[]
-  methods: string[]
+  skillGroups: SkillGroup[]
   // Null when no CV PDF has been uploaded yet. Points at this app's own
   // `/api/files/[key]` route (see app/api/files/[key]/route.ts) — never a
   // direct bucket URL, since the bucket is private — which resolves a
   // fresh presigned download URL at request time.
   cvPdfUrl: string | null
 }
+
+const fallbackSkillGroups: SkillGroup[] = [
+  { id: "programming", label: "Programming & Tools", tags: staticCvSkills.programming },
+  { id: "methods", label: "Econometric & ML Methods", tags: staticCvSkills.methods },
+]
 
 export async function getCvProfile(): Promise<PublicCvProfile> {
   const fallback: PublicCvProfile = {
@@ -176,8 +189,7 @@ export async function getCvProfile(): Promise<PublicCvProfile> {
     phone: staticProfile.phone,
     linkedin: staticProfile.linkedin,
     linkedinUrl: staticProfile.linkedinUrl,
-    programming: staticCvSkills.programming,
-    methods: staticCvSkills.methods,
+    skillGroups: fallbackSkillGroups,
     cvPdfUrl: null,
   }
 
@@ -195,6 +207,16 @@ export async function getCvProfile(): Promise<PublicCvProfile> {
     const row = rows[0]
     if (!row) return fallback
 
+    // skillGroups is the source of truth once anything has been saved from
+    // the new editor. Until then, fall back to the two older columns (so
+    // skills entered before this feature existed aren't lost), then to the
+    // built-in defaults.
+    const savedGroups = validItems<SkillGroupInput>(row.skillGroups, skillGroupSchema)
+    const legacyGroups: SkillGroup[] = [
+      { id: "programming", label: "Programming & Tools", tags: row.programmingSkills ? parseDetails(row.programmingSkills) : [] },
+      { id: "methods", label: "Econometric & ML Methods", tags: row.methodSkills ? parseDetails(row.methodSkills) : [] },
+    ].filter((group) => group.tags.length > 0)
+
     return {
       tagline: row.tagline || fallback.tagline,
       nationality: row.nationality || fallback.nationality,
@@ -203,12 +225,7 @@ export async function getCvProfile(): Promise<PublicCvProfile> {
       phone: row.phone || fallback.phone,
       linkedin: row.linkedin || fallback.linkedin,
       linkedinUrl: row.linkedinUrl || fallback.linkedinUrl,
-      programming: row.programmingSkills
-        ? parseDetails(row.programmingSkills)
-        : fallback.programming,
-      methods: row.methodSkills
-        ? parseDetails(row.methodSkills)
-        : fallback.methods,
+      skillGroups: savedGroups.length > 0 ? savedGroups : legacyGroups.length > 0 ? legacyGroups : fallback.skillGroups,
       cvPdfUrl: row.cvPdfPathname
         ? `/api/files/${encodeURIComponent(row.cvPdfPathname)}?download=1&filename=${encodeURIComponent(row.cvPdfFilename || "CV.pdf")}`
         : null,
@@ -267,35 +284,79 @@ export async function getPublishedPapers(): Promise<PublicPaper[]> {
   }
 }
 
-export async function getPublishedProjects(): Promise<PublicProject[]> {
-  if (!process.env.DATABASE_URL) {
-    return staticPublicProjects()
-  }
+type ProjectRow = typeof projectEntries.$inferSelect
 
+function stringList(value: unknown): string[] {
+  const parsed = stackListSchema.safeParse(value)
+  return parsed.success ? parsed.data : []
+}
+
+function storedOutput(value: unknown): ProjectOutput | null {
+  if (value === null || value === undefined) return null
+  const parsed = parseProjectOutput(value)
+  return parsed.success ? parsed.data : null
+}
+
+// Keeps whichever stored items are still valid, so one bad entry (e.g. from
+// an older shape) never takes the whole page down.
+function validItems<T>(value: unknown, schema: { safeParse: (v: unknown) => { success: boolean; data?: T } }): T[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((item) => {
+    const parsed = schema.safeParse(item)
+    return parsed.success ? [parsed.data as T] : []
+  })
+}
+
+function toPublicProject(row: ProjectRow, output: ProjectOutput | null): PublicProject {
+  return {
+    slug: row.slug,
+    title: row.title,
+    category: row.category,
+    summary: row.summary || row.excerpt,
+    tags: parseTags(row.tags),
+    status: row.status,
+    kind: (row.kind as PublicProject["kind"]) ?? "dashboard",
+    pdfUrl: row.pdfUrl,
+    date: row.date.toISOString(),
+    projectType: row.projectType,
+    mode: row.mode,
+    languages: stringList(row.languages),
+    apis: stringList(row.apis),
+    featured: row.featured,
+    updateFrequency: row.updateFrequency,
+    output: summariseOutput(output),
+  }
+}
+
+// Projects have no built-in examples: with nothing published (or no
+// database configured) /projects shows its empty state. A database error
+// is thrown so the page can say so instead of looking empty.
+export async function getPublishedProjects(): Promise<PublicProject[]> {
+  if (!process.env.DATABASE_URL) return []
+
+  const rows = await db
+    .select()
+    .from(projectEntries)
+    .where(eq(projectEntries.published, true))
+    .orderBy(projectEntries.sortOrder, desc(projectEntries.date))
+
+  return rows.map((row) => toPublicProject(row, storedOutput(row.output)))
+}
+
+// Published projects marked as featured, in page order. Home shows the
+// first one per sector, and falls back to Research Focus when there are
+// none (or the database is unavailable).
+export async function getFeaturedProjects(): Promise<PublicProject[]> {
+  if (!process.env.DATABASE_URL) return []
   try {
     const rows = await db
       .select()
       .from(projectEntries)
-      .where(eq(projectEntries.published, true))
+      .where(and(eq(projectEntries.published, true), eq(projectEntries.featured, true)))
       .orderBy(projectEntries.sortOrder, desc(projectEntries.date))
-
-    if (rows.length === 0) {
-      return staticPublicProjects()
-    }
-
-    return rows.map((row) => ({
-      slug: row.slug,
-      title: row.title,
-      category: row.category,
-      summary: row.summary || row.excerpt,
-      tags: parseTags(row.tags),
-      status: row.status,
-      kind: (row.kind as PublicProject["kind"]) ?? "dashboard",
-      pdfUrl: row.pdfUrl,
-      date: row.date.toISOString(),
-    }))
+    return rows.map((row) => toPublicProject(row, storedOutput(row.output)))
   } catch {
-    return staticPublicProjects()
+    return []
   }
 }
 
@@ -344,9 +405,7 @@ export async function getPublicPaperBySlug(
 export async function getPublicProjectBySlug(
   slug: string,
 ): Promise<PublicProjectDetail | null> {
-  if (!process.env.DATABASE_URL) {
-    return staticPublicProjectDetails().find((p) => p.slug === slug) ?? null
-  }
+  if (!process.env.DATABASE_URL) return null
 
   try {
     const rows = await db
@@ -360,20 +419,17 @@ export async function getPublicProjectBySlug(
     const row = rows[0]
     if (!row) return null
 
+    const output = storedOutput(row.output)
     return {
-      slug: row.slug,
-      title: row.title,
-      category: row.category,
-      summary: row.summary || row.excerpt,
-      tags: parseTags(row.tags),
-      status: row.status,
-      kind: (row.kind as PublicProject["kind"]) ?? "dashboard",
-      pdfUrl: row.pdfUrl,
-      date: row.date.toISOString(),
+      ...toPublicProject(row, output),
       excerpt: row.excerpt || row.summary,
       contentType: row.contentType,
       latexSource: row.latexSource,
       pdfFilename: row.pdfFilename,
+      links: validItems<ProjectLink>(row.links, projectLinkSchema),
+      embedUrl: row.embedUrl,
+      sections: validItems<ProjectSection>(row.sections, projectSectionSchema),
+      fullOutput: output,
     }
   } catch (error) {
     throw error instanceof Error ? error : new Error("Failed to load project")
