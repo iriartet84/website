@@ -1,7 +1,7 @@
 'use client'
 
 import { requestUploadUrlAction, uploadFileFallbackAction, type UploadKind } from '@/app/admin/upload-actions'
-import { MAX_IMAGE_BYTES, MAX_PDF_BYTES } from '@/lib/validations'
+import { MAX_IMAGE_BYTES, MAX_PDF_BYTES_BUCKET } from '@/lib/validations'
 
 // Client side of the file uploads used by the page editors. Same flow as
 // before for PDFs, now also used for images: ask the server for a presigned
@@ -16,8 +16,13 @@ export function validateFile(file: File, kind: UploadKind): string | null {
     if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
       return 'Only PDF files are accepted.'
     }
-    if (file.size > MAX_PDF_BYTES) {
-      return `PDF files must be ${Math.round(MAX_PDF_BYTES / (1024 * 1024))}MB or smaller.`
+    // The generous (bucket-path) limit: this app doesn't know from here
+    // whether a bucket is actually configured, so it checks against the
+    // larger ceiling and lets the server enforce the precise limit for
+    // whichever path the upload actually takes (see checkUpload in
+    // app/admin/editor-actions.ts and uploadFileFallbackAction).
+    if (file.size > MAX_PDF_BYTES_BUCKET) {
+      return `PDF files must be ${Math.round(MAX_PDF_BYTES_BUCKET / (1024 * 1024))}MB or smaller.`
     }
     return null
   }

@@ -1,4 +1,7 @@
-import { Mail } from 'lucide-react'
+'use client'
+
+import { useState, type ComponentType, type MouseEvent } from 'react'
+import { Check, Copy, Mail } from 'lucide-react'
 import { profile } from '@/lib/content'
 import { cn } from '@/lib/utils'
 
@@ -15,6 +18,75 @@ function LinkedInIcon({ className }: { className?: string }) {
   )
 }
 
+// Icon button that doesn't go anywhere on click. Hovering it (or tapping it,
+// for touch) expands it in place — the text grows out to the right of the
+// icon — to reveal the email/LinkedIn value, with a copy button.
+function ContactButton({
+  icon: Icon,
+  value,
+  label,
+  iconClassName,
+}: {
+  icon: ComponentType<{ className?: string }>
+  value: string
+  label: string
+  iconClassName?: string
+}) {
+  const [open, setOpen] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  async function copy(event: MouseEvent) {
+    event.stopPropagation()
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      // Clipboard API unavailable — the value is still shown, so it can be
+      // selected and copied by hand.
+    }
+  }
+
+  return (
+    <div
+      className="inline-flex items-center rounded-full text-navy transition-colors hover:bg-secondary"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-label={label}
+        title={label}
+        className={cn('inline-flex size-9 shrink-0 items-center justify-center rounded-full', iconClassName)}
+      >
+        <Icon className="size-4" />
+      </button>
+      <div
+        className={cn(
+          'flex items-center gap-1.5 overflow-hidden whitespace-nowrap text-xs font-medium transition-all duration-500',
+          open ? 'max-w-[220px] pr-3 opacity-100' : 'max-w-0 opacity-0',
+        )}
+      >
+        {value}
+        <button
+          type="button"
+          onClick={copy}
+          aria-label={`Copy ${label.toLowerCase()}`}
+          title="Copy"
+          className={cn(
+            'inline-flex size-5 shrink-0 items-center justify-center rounded-full transition-colors',
+            copied ? 'text-emerald-600' : 'text-steel-700 hover:bg-white',
+          )}
+        >
+          {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export function SocialLinks({
   className,
   iconClassName,
@@ -24,28 +96,8 @@ export function SocialLinks({
 }) {
   return (
     <div className={cn('flex items-center gap-1', className)}>
-      <a
-        href={`mailto:${profile.email}`}
-        aria-label="Email Toribio Iriarte"
-        className={cn(
-          'inline-flex size-9 items-center justify-center rounded-full text-navy transition-colors hover:bg-secondary',
-          iconClassName,
-        )}
-      >
-        <Mail className="size-4" />
-      </a>
-      <a
-        href={profile.linkedinUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        aria-label="Toribio Iriarte on LinkedIn"
-        className={cn(
-          'inline-flex size-9 items-center justify-center rounded-full text-navy transition-colors hover:bg-secondary',
-          iconClassName,
-        )}
-      >
-        <LinkedInIcon className="size-4" />
-      </a>
+      <ContactButton icon={Mail} value={profile.email} label="Email" iconClassName={iconClassName} />
+      <ContactButton icon={LinkedInIcon} value={profile.linkedin} label="LinkedIn" iconClassName={iconClassName} />
     </div>
   )
 }

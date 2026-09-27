@@ -14,12 +14,14 @@ import {
   siteContent,
 } from "@/lib/db/schema"
 import { requireAdmin } from "@/lib/require-admin"
-import { contentTypeForKey, isStorageKey, savePdfBlob, statStoredFile } from "@/lib/blobs"
-import { compileLatex } from "@/lib/compile-latex"
+import { contentTypeForKey, isS3Configured, isStorageKey, statStoredFile } from "@/lib/blobs"
+import { renderLatexArticle, uploadedImageKeys, type RenderedArticle } from "@/lib/latex-article"
 import { errorMessage } from "@/lib/action-error"
 import {
   MAX_IMAGE_BYTES,
+  MAX_LATEX_CHARS,
   MAX_PDF_BYTES,
+  MAX_PDF_BYTES_BUCKET,
   cvPagePayloadSchema,
   papersPagePayloadSchema,
   projectPagePayloadSchema,
@@ -136,57 +138,69 @@ async function checkUpload(
   if (expected === "pdf" ? !isPdf : isPdf) return `${label}: the uploaded file has the wrong type.`
   const stat = await statStoredFile(key)
   if (!stat.found) return `${label}: the upload didn't finish. Choose the file again and save.`
-  const max = expected === "pdf" ? MAX_PDF_BYTES : MAX_IMAGE_BYTES
+  // A PDF that reached storage via a presigned PUT (bucket configured) went
+  // straight there rather than through a Server Action, so it's held to the
+  // larger bucket-path ceiling, not the function-payload one.
+  const max = expected === "pdf" ? (isS3Configured() ? MAX_PDF_BYTES_BUCKET : MAX_PDF_BYTES) : MAX_IMAGE_BYTES
   if (stat.size !== null && stat.size > max) {
     return `${label}: the file is larger than ${Math.round(max / (1024 * 1024))}MB.`
   }
   return null
 }
 
-type ResolvedDocument =
-  | { change: false }
-  | {
-      change: true
-      contentType: "pdf" | "latex"
-      pdfUrl: string
-      pdfPathname: string
-      pdfFilename: string
-      latexSource: string | null
-    }
+type DocumentFields = {
+  contentType?: "pdf" | "latex"
+  pdfUrl?: string | null
+  pdfPathname?: string | null
+  pdfFilename?: string | null
+  latexSource?: string
+}
 
+type ResolvedDocument = { change: false } | { change: true; fields: DocumentFields }
+
+// A document change → the columns to update. Switching to PDF keeps the
+// LaTeX source stored (switching back restores it); the PDF columns hold the
+// PDF document, or a LaTeX article's optional "Download PDF" file.
 async function resolveDocument(
   document: DocumentChange,
   label: string,
 ): Promise<ResolvedDocument | { error: string }> {
   if (document.kind === "keep") return { change: false }
 
-  if (document.kind === "upload") {
-    const problem = await checkUpload(document.key, "pdf", label)
+  const fields: DocumentFields = { contentType: document.kind }
+  if (document.pdf.kind === "upload") {
+    const problem = await checkUpload(document.pdf.key, "pdf", label)
     if (problem) return { error: problem }
-    return {
-      change: true,
-      contentType: "pdf",
-      pdfUrl: `/api/files/${encodeURIComponent(document.key)}`,
-      pdfPathname: document.key,
-      pdfFilename: document.filename,
-      latexSource: null,
-    }
+    fields.pdfUrl = `/api/files/${encodeURIComponent(document.pdf.key)}`
+    fields.pdfPathname = document.pdf.key
+    fields.pdfFilename = document.pdf.filename
+  } else if (document.pdf.kind === "remove") {
+    fields.pdfUrl = null
+    fields.pdfPathname = null
+    fields.pdfFilename = null
   }
 
-  try {
-    const pdf = await compileLatex(document.source)
-    const stored = await savePdfBlob("compiled.pdf", pdf)
-    return {
-      change: true,
-      contentType: "latex",
-      pdfUrl: stored.url,
-      pdfPathname: stored.key,
-      pdfFilename: "compiled.pdf",
-      latexSource: document.source,
+  if (document.kind === "latex") {
+    // Images in the article are uploaded while editing; each one referenced
+    // must really be in storage.
+    for (const key of uploadedImageKeys(document.source).slice(0, 60)) {
+      const problem = await checkUpload(key, "image", `${label} (image in the LaTeX)`)
+      if (problem) return { error: problem }
     }
-  } catch (error) {
-    return { error: `${label}: LaTeX compilation failed — ${errorMessage(error)}` }
+    fields.latexSource = document.source
   }
+  return { change: true, fields }
+}
+
+// Live preview for the LaTeX console: the same rendering as the public page.
+export async function renderLatexPreviewAction(
+  source: string,
+): Promise<{ ok: true; article: RenderedArticle } | { ok: false; error: string }> {
+  const session = await requireAdmin()
+  if (!session) return { ok: false, error: "Your session has ended. Sign in again in another tab." }
+  if (typeof source !== "string") return { ok: false, error: "Nothing to preview." }
+  if (source.length > MAX_LATEX_CHARS) return { ok: false, error: "The LaTeX source is too long to preview." }
+  return { ok: true, article: renderLatexArticle(source) }
 }
 
 async function upsertSiteContent(key: string, value: unknown) {
@@ -293,8 +307,8 @@ export async function savePapersPageAction(
   const dup = duplicateSlug(items)
   if (dup) return dup
 
-  // Resolve uploads/LaTeX before opening the transaction — compiling can
-  // take a while and doesn't need to hold a database connection.
+  // Check uploads before opening the transaction — they're storage
+  // round trips that don't need to hold a database connection.
   const documents: ResolvedDocument[] = []
   for (const item of items) {
     const resolved = await resolveDocument(item.document, quoted(item.title, "A paper"))
@@ -323,19 +337,13 @@ export async function savePapersPageAction(
           type: item.type,
           excerpt: item.excerpt,
           abstract: item.excerpt,
+          longAbstract: item.longAbstract || null,
           tags,
           methods: tags,
           published: item.published,
           sortOrder: index,
           ...(doc.change
-            ? {
-                contentType: doc.contentType,
-                pdfUrl: doc.pdfUrl,
-                pdfPathname: doc.pdfPathname,
-                pdfFilename: doc.pdfFilename,
-                latexSource: doc.latexSource,
-              }
-            : {}),
+            ? doc.fields : {}),
         }
         if (item.id !== null) {
           await tx
@@ -427,14 +435,7 @@ export async function saveProjectsPageAction(
           featured: item.featured,
           sortOrder: index,
           ...(doc.change
-            ? {
-                contentType: doc.contentType,
-                pdfUrl: doc.pdfUrl,
-                pdfPathname: doc.pdfPathname,
-                pdfFilename: doc.pdfFilename,
-                latexSource: doc.latexSource,
-              }
-            : {}),
+            ? doc.fields : {}),
         }
         if (item.id !== null) {
           await tx
@@ -545,14 +546,7 @@ export async function saveProjectPageAction(input: unknown): Promise<ProjectPage
         // of the old one no longer applies.
         ...(urlChanged ? { output: null, outputError: null, outputCheckedAt: null } : {}),
         ...(doc.change
-          ? {
-              contentType: doc.contentType,
-              pdfUrl: doc.pdfUrl,
-              pdfPathname: doc.pdfPathname,
-              pdfFilename: doc.pdfFilename,
-              latexSource: doc.latexSource,
-            }
-          : {}),
+          ? doc.fields : {}),
       })
       .where(eq(projectEntries.id, page.id))
   } catch (error) {

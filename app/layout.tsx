@@ -12,6 +12,9 @@ const inter = Inter({
 
 const fraunces = Fraunces({
   subsets: ['latin'],
+  // Italic too: paper figure captions set their "Source: …" line in italic
+  // serif (only downloaded on pages that use it).
+  style: ['normal', 'italic'],
   variable: '--font-serif-display',
   display: 'swap',
 })

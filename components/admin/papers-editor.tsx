@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useId, useState } from 'react'
 import { ExternalLink, Plus } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
 import { PaperArticle, PaperFilters } from '@/components/papers-list'
@@ -17,8 +17,13 @@ import {
   scrollToItem,
   settingsInput,
 } from '@/components/admin/editor-ui'
-import { DocumentControl, type DocumentState } from '@/components/admin/document-control'
-import { uploadFile } from '@/components/admin/upload'
+import {
+  DocumentConsole,
+  DocumentSummary,
+  documentChangeFor,
+  initialDocumentDraft,
+  type DocumentDraft,
+} from '@/components/admin/document-control'
 import { focusItem, moveItem, newClientKey, todayIso, useEditorState } from '@/components/admin/use-editor-state'
 import { savePapersPageAction } from '@/app/admin/editor-actions'
 import { slugify } from '@/lib/validations'
@@ -45,6 +50,7 @@ export type PapersEditorData = {
   rows: (PaperFields & {
     id: number
     published: boolean
+    longAbstract: string
     contentType: string
     pdfUrl: string | null
     pdfFilename: string | null
@@ -54,6 +60,7 @@ export type PapersEditorData = {
 }
 
 type Row = PaperFields & {
+  longAbstract: string
   clientKey: string
   id: number | null
   published: boolean
@@ -63,7 +70,7 @@ type Row = PaperFields & {
   pdfUrl: string | null
   pdfFilename: string | null
   latexSource: string | null
-  doc: DocumentState
+  doc: DocumentDraft
 }
 
 type State = { header: PageHeaderContent; rows: Row[] }
@@ -76,7 +83,7 @@ function build(data: PapersEditorData): State {
           clientKey: `paper-${row.id}`,
           removed: false,
           slugTouched: true,
-          doc: { kind: 'keep' },
+          doc: initialDocumentDraft(row),
         }))
       : data.defaults.map((paper, index) => ({
           ...paper,
@@ -85,11 +92,12 @@ function build(data: PapersEditorData): State {
           published: true,
           removed: false,
           slugTouched: true,
+          longAbstract: '',
           contentType: 'pdf',
           pdfUrl: null,
           pdfFilename: null,
           latexSource: null,
-          doc: { kind: 'keep' },
+          doc: initialDocumentDraft({ contentType: 'pdf', latexSource: null, pdfUrl: null, pdfFilename: null }),
         }))
   return { header: data.header, rows }
 }
@@ -99,6 +107,15 @@ const domId = (row: Row) => `item-${row.clientKey}`
 export function PapersEditor({ data }: { data: PapersEditorData }) {
   const { state, setState, dirty, status, setStatus, discard, markSaved } = useEditorState(data, build)
   const [filter, setFilter] = useState('All')
+  // Entries whose document console is open (below the entry).
+  const [openDocuments, setOpenDocuments] = useState<Set<string>>(() => new Set())
+  const toggleDocument = (clientKey: string) =>
+    setOpenDocuments((current) => {
+      const next = new Set(current)
+      if (next.has(clientKey)) next.delete(clientKey)
+      else next.add(clientKey)
+      return next
+    })
 
   const live = state.rows.filter((row) => !row.removed)
   const usingDefaults = !data.loadError && data.rows.length === 0
@@ -145,11 +162,12 @@ export function PapersEditor({ data }: { data: PapersEditorData }) {
       published: true,
       removed: false,
       slugTouched: false,
+      longAbstract: '',
       contentType: 'pdf',
       pdfUrl: null,
       pdfFilename: null,
       latexSource: null,
-      doc: { kind: 'keep' },
+      doc: { ...initialDocumentDraft({ contentType: 'pdf', latexSource: null, pdfUrl: null, pdfFilename: null }) },
     }
     setState((s) => ({ ...s, rows: [row, ...s.rows] }))
     focusItem(`item-${clientKey}`)
@@ -157,7 +175,7 @@ export function PapersEditor({ data }: { data: PapersEditorData }) {
 
   const save = useCallback(async () => {
     const rows = state.rows
-    const uploads = rows.filter((row) => !row.removed && row.doc.kind === 'file')
+    const uploads = rows.filter((row) => !row.removed && row.doc.pdf.kind === 'file')
     setStatus({
       kind: 'saving',
       message: uploads.length ? `Uploading ${uploads.length} PDF${uploads.length > 1 ? 's' : ''}…` : 'Saving…',
@@ -166,13 +184,7 @@ export function PapersEditor({ data }: { data: PapersEditorData }) {
       const items = []
       for (const row of rows) {
         if (row.removed) continue
-        let document: DocumentChange = { kind: 'keep' }
-        if (row.doc.kind === 'file') {
-          const { key } = await uploadFile(row.doc.file, 'pdf')
-          document = { kind: 'upload', key, filename: row.doc.file.name }
-        } else if (row.doc.kind === 'latex') {
-          document = { kind: 'latex', source: row.doc.source }
-        }
+        const document: DocumentChange = await documentChangeFor(row.doc, row)
         items.push({
           clientKey: row.clientKey,
           id: row.id,
@@ -182,6 +194,7 @@ export function PapersEditor({ data }: { data: PapersEditorData }) {
           type: row.type,
           date: row.date,
           excerpt: row.excerpt.trim(),
+          longAbstract: row.longAbstract.trim(),
           tags: row.tags.map((tag) => tag.trim()).filter(Boolean),
           published: row.published,
           document,
@@ -359,15 +372,30 @@ export function PapersEditor({ data }: { data: PapersEditorData }) {
                         </SettingsPopover>
                       ),
                       documentControl: (
-                        <DocumentControl
-                          current={{ url: row.pdfUrl, filename: row.pdfFilename, contentType: row.contentType }}
-                          pending={row.doc}
-                          latexSource={row.latexSource}
-                          onChange={(doc) => updateRow(row.clientKey, { doc })}
+                        <DocumentSummary
+                          current={row}
+                          draft={row.doc}
+                          open={openDocuments.has(row.clientKey)}
+                          onToggle={() => toggleDocument(row.clientKey)}
                         />
                       ),
                     }}
                   />
+                  {openDocuments.has(row.clientKey) && (
+                    <DocumentConsole
+                      className="mt-6"
+                      current={row}
+                      draft={row.doc}
+                      onChange={(doc) => updateRow(row.clientKey, { doc })}
+                      onClose={() => toggleDocument(row.clientKey)}
+                      pageFields={
+                        <LongAbstractField
+                          value={row.longAbstract}
+                          onChange={(longAbstract) => updateRow(row.clientKey, { longAbstract })}
+                        />
+                      }
+                    />
+                  )}
                 </EditableItem>
               )
             })}
@@ -394,5 +422,29 @@ export function PapersEditor({ data }: { data: PapersEditorData }) {
         }
       />
     </>
+  )
+}
+
+// The paper's optional Long Abstract, edited in its document console.
+function LongAbstractField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const id = useId()
+  return (
+    <div>
+      <label htmlFor={id} className="text-xs font-semibold text-navy">
+        Long Abstract (optional)
+      </label>
+      <p id={`${id}-hint`} className="mt-0.5 text-xs text-muted-foreground">
+        Renders in a styled box at the top of the article page. Leave empty to hide.
+      </p>
+      <textarea
+        id={id}
+        aria-describedby={`${id}-hint`}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        rows={5}
+        placeholder="Plain text. Leave a blank line between paragraphs."
+        className="mt-2 w-full resize-y rounded-lg border border-border bg-white px-3 py-2 text-sm leading-relaxed text-navy outline-none focus:border-steel focus:ring-2 focus:ring-steel/20"
+      />
+    </div>
   )
 }

@@ -5,7 +5,6 @@ import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { Menu, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { profile } from '@/lib/content'
 import { SocialLinks } from '@/components/social-links'
 
 const links = [
@@ -14,6 +13,13 @@ const links = [
   { href: '/papers', label: 'Papers & Briefs' },
   { href: '/cv', label: 'CV' },
 ]
+
+// At rest: regular weight, in the same near-black as page titles. The
+// current page keeps its bold label on the site's slate-blue chip (--steel);
+// hovering shows a lighter chip.
+const navPill = 'rounded-full px-4 py-2 text-sm transition-colors'
+const navPillActive = 'bg-steel/20 font-bold text-navy'
+const navPillInactive = 'font-normal text-navy hover:bg-steel/10'
 
 export function SiteNav() {
   const pathname = usePathname()
@@ -28,14 +34,11 @@ export function SiteNav() {
   useEffect(() => {
     const onScroll = () => {
       setScrolled(window.scrollY > 24)
-      const showcase = document.getElementById('research-showcase')
-      if (showcase) {
-        const rect = showcase.getBoundingClientRect()
-        // Hide the header while the pinned showcase occupies the viewport.
-        setHidden(rect.top <= 4 && rect.bottom >= window.innerHeight - 4)
-      } else {
-        setHidden(false)
-      }
+      // Hide the header only once the footer comes into view — it repeats
+      // the same nav links, so the header would be redundant there. Not
+      // tied to the Research Focus carousel, or any other section.
+      const footer = document.getElementById('site-footer')
+      setHidden(footer ? footer.getBoundingClientRect().top < window.innerHeight : false)
     }
     onScroll()
     window.addEventListener('scroll', onScroll, { passive: true })
@@ -49,22 +52,15 @@ export function SiteNav() {
   return (
     <header
       className={cn(
-        'fixed inset-x-0 top-0 z-50 transition-all duration-500 ease-out',
+        'fixed inset-x-0 top-0 z-50 transition-all duration-500 ease-out print:hidden',
         hidden ? '-translate-y-full opacity-0' : 'translate-y-0 opacity-100',
         scrolled
           ? 'border-b border-border/70 bg-white/85 backdrop-blur-md'
           : 'border-b border-transparent bg-transparent',
       )}
     >
-      <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 sm:px-8">
-        <Link
-          href="/"
-          className="font-serif text-lg tracking-tight text-navy hover:opacity-70 transition-opacity"
-        >
-          {profile.name}
-        </Link>
-
-        <div className="hidden items-center gap-1 md:flex">
+      <nav className="relative mx-auto flex h-16 max-w-6xl items-center px-5 sm:px-8">
+        <div className="hidden items-center gap-1 md:absolute md:left-1/2 md:flex md:-translate-x-1/2">
           {links.map((link) => {
             const active =
               link.href === '/'
@@ -74,12 +70,7 @@ export function SiteNav() {
               <Link
                 key={link.href}
                 href={link.href}
-                className={cn(
-                  'rounded-full px-3.5 py-1.5 text-sm transition-colors',
-                  active
-                    ? 'text-navy'
-                    : 'text-muted-foreground hover:text-navy',
-                )}
+                className={cn(navPill, active ? navPillActive : navPillInactive)}
               >
                 {link.label}
               </Link>
@@ -87,14 +78,8 @@ export function SiteNav() {
           })}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-2">
           <SocialLinks className="hidden sm:flex" />
-          <Link
-            href="/contact"
-            className="rounded-full bg-navy px-4 py-2 text-sm font-medium text-primary-foreground transition-transform hover:-translate-y-0.5 hover:bg-navy-800"
-          >
-            Contact
-          </Link>
           <button
             type="button"
             onClick={() => setMenuOpen((v) => !v)}
@@ -121,9 +106,7 @@ export function SiteNav() {
                   href={link.href}
                   className={cn(
                     'rounded-lg px-3 py-2.5 text-sm transition-colors',
-                    active
-                      ? 'bg-secondary text-navy'
-                      : 'text-muted-foreground hover:text-navy',
+                    active ? navPillActive : 'font-normal text-navy hover:bg-secondary',
                   )}
                 >
                   {link.label}

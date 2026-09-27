@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react'
 import Link from 'next/link'
-import { AppWindow, BookOpen, Braces, Database, ExternalLink, FileText, FolderGit2, Link2, Plug } from 'lucide-react'
+import { AppWindow, BookOpen, Braces, Database, Download, ExternalLink, FileText, FolderGit2, Link2, Plug } from 'lucide-react'
 import { PdfViewer } from '@/components/pdf-viewer'
+import { LatexArticleView } from '@/components/latex-article-view'
+import { PrintButton } from '@/components/print-button'
 import { Markdown } from '@/components/markdown'
 import { KeyFigures } from '@/components/key-figures'
 import { ProjectChart } from '@/components/project-chart'
@@ -27,6 +29,7 @@ import {
   type ProjectSection,
 } from '@/lib/project-meta'
 import type { PublicProjectDetail } from '@/lib/public-content'
+import type { RenderedArticle } from '@/lib/latex-article'
 
 // The project page (/projects/[slug]): a header with the project's labels
 // and links, then its sections in order. The admin page editor renders the
@@ -264,7 +267,56 @@ function SectionShell({ id, heading, children }: { id: string; heading: string; 
 
 // One section as visitors see it, or null when it has nothing to show yet
 // (a chart before the project publishes output, an empty write-up...).
-export function ProjectSectionView({ section, project }: { section: ProjectSection; project: PublicProjectDetail }) {
+// The project's document: a LaTeX article (rendered on the server and passed
+// in as `article`) or a PDF in the reader. The admin editor has no rendered
+// article, so it gets a pointer to the document console instead.
+export function ProjectDocument({ project, article }: { project: PublicProjectDetail; article?: RenderedArticle | null }) {
+  if (project.contentType === 'latex' && project.latexSource) {
+    if (!article) {
+      return (
+        <p className="rounded-2xl border border-dashed border-steel/30 bg-white p-5 font-sans text-sm text-muted-foreground">
+          LaTeX article &mdash; shown here as an article. Edit and preview it under Page &amp; document.
+        </p>
+      )
+    }
+    const actionClass =
+      'inline-flex items-center gap-2 rounded-full border border-border bg-white px-4 py-2 text-sm font-medium text-navy transition-colors hover:bg-secondary'
+    return (
+      <div>
+        <div className="mb-8 flex max-w-[48rem] justify-end print:hidden">
+          {project.pdfUrl ? (
+            <a
+              href={`${project.pdfUrl}?download=1&filename=${encodeURIComponent(project.pdfFilename || `${project.slug}.pdf`)}`}
+              className={actionClass}
+            >
+              <Download aria-hidden className="size-4" />
+              Download PDF
+            </a>
+          ) : (
+            <PrintButton className={actionClass} />
+          )}
+        </div>
+        <LatexArticleView article={article} />
+      </div>
+    )
+  }
+  if (!project.pdfUrl) return null
+  return <PdfViewer url={project.pdfUrl} title={project.title} filename={project.pdfFilename} />
+}
+
+export function hasDocument(project: PublicProjectDetail) {
+  return Boolean(project.pdfUrl || (project.contentType === 'latex' && project.latexSource))
+}
+
+export function ProjectSectionView({
+  section,
+  project,
+  article,
+}: {
+  section: ProjectSection
+  project: PublicProjectDetail
+  article?: RenderedArticle | null
+}) {
   const output = project.fullOutput
   switch (section.type) {
     case 'text':
@@ -372,10 +424,10 @@ export function ProjectSectionView({ section, project }: { section: ProjectSecti
       )
     }
     case 'document':
-      if (!project.pdfUrl) return null
+      if (!hasDocument(project)) return null
       return (
         <SectionShell id={section.id} heading={section.heading}>
-          <PdfViewer url={project.pdfUrl} title={project.title} filename={project.pdfFilename} />
+          <ProjectDocument project={project} article={article} />
         </SectionShell>
       )
   }
@@ -391,18 +443,14 @@ export function ProjectInTheWorks() {
   )
 }
 
-export function ProjectBody({ project }: { project: PublicProjectDetail }) {
+export function ProjectBody({ project, article }: { project: PublicProjectDetail; article?: RenderedArticle | null }) {
   // Projects without sections keep the original page: their document, or
   // the "in the works" note.
   if (project.sections.length === 0) {
-    return project.pdfUrl ? (
-      <PdfViewer url={project.pdfUrl} title={project.title} filename={project.pdfFilename} />
-    ) : (
-      <ProjectInTheWorks />
-    )
+    return hasDocument(project) ? <ProjectDocument project={project} article={article} /> : <ProjectInTheWorks />
   }
   const views = project.sections
-    .map((section) => ({ section, view: ProjectSectionView({ section, project }) }))
+    .map((section) => ({ section, view: ProjectSectionView({ section, project, article }) }))
     .filter((entry) => entry.view !== null)
   if (views.length === 0) return <ProjectInTheWorks />
   return (

@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ProjectBody, ProjectHeader } from '@/components/project-page'
 import { getPublicProjectBySlug } from '@/lib/queries'
+import { renderLatexArticle } from '@/lib/latex-article'
 
 export const revalidate = 3600
 
@@ -51,12 +52,14 @@ export default async function ProjectDetailPage({ params }: PageProps) {
     )
   }
   if (!project) notFound()
+  const article =
+    project.contentType === 'latex' && project.latexSource ? renderLatexArticle(project.latexSource) : null
 
   return (
     <main>
       <ProjectHeader project={project} />
       <div className="mx-auto max-w-4xl px-5 pb-20 sm:px-8">
-        <ProjectBody project={project} />
+        <ProjectBody project={project} article={article} />
       </div>
     </main>
   )

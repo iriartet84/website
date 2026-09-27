@@ -5,7 +5,13 @@ import Link from 'next/link'
 import { CircleCheck, ExternalLink, LoaderCircle, Plus, RefreshCw, TriangleAlert, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { EditingBanner } from '@/components/admin/admin-bar'
-import { DocumentControl, type DocumentState } from '@/components/admin/document-control'
+import {
+  DocumentConsole,
+  DocumentSummary,
+  documentChangeFor,
+  initialDocumentDraft,
+  type DocumentDraft,
+} from '@/components/admin/document-control'
 import {
   AddItemButton,
   EditableItem,
@@ -17,7 +23,6 @@ import {
 } from '@/components/admin/editor-ui'
 import { OutputHealthBadge } from '@/components/admin/output-health'
 import { confirmLeaveWithUnsavedChanges } from '@/components/admin/unsaved-guard'
-import { uploadFile } from '@/components/admin/upload'
 import { moveItem, newClientKey, useEditorState } from '@/components/admin/use-editor-state'
 import { ProjectHeader, ProjectLinks, ProjectSectionView } from '@/components/project-page'
 import { checkProjectOutputAction, saveProjectPageAction } from '@/app/admin/editor-actions'
@@ -78,7 +83,7 @@ export type ProjectPageEditorData = {
 type State = Omit<
   ProjectPageEditorData,
   'id' | 'contentType' | 'pdfUrl' | 'pdfFilename' | 'latexSource' | 'output' | 'outputCheckedAt' | 'outputError'
-> & { doc: DocumentState }
+> & { doc: DocumentDraft }
 
 function build(data: ProjectPageEditorData): State {
   return {
@@ -101,7 +106,7 @@ function build(data: ProjectPageEditorData): State {
     embedUrl: data.embedUrl,
     updateFrequency: data.updateFrequency,
     sections: data.sections,
-    doc: { kind: 'keep' },
+    doc: initialDocumentDraft(data),
   }
 }
 
@@ -128,6 +133,7 @@ export function ProjectPageEditor({
   const { state, setState, dirty, status, setStatus, discard, markSaved } = useEditorState(data, build)
   const [previewOutput, setPreviewOutput] = useState<ProjectOutput | null>(data.output)
   const [check, setCheck] = useState<CheckState>({ kind: 'idle' })
+  const [documentOpen, setDocumentOpen] = useState(false)
 
   useEffect(() => setPreviewOutput(data.output), [data.output])
 
@@ -185,15 +191,9 @@ export function ProjectPageEditor({
   }
 
   const save = useCallback(async () => {
-    setStatus({ kind: 'saving', message: state.doc.kind === 'file' ? 'Uploading the PDF…' : 'Saving…' })
+    setStatus({ kind: 'saving', message: state.doc.pdf.kind === 'file' ? 'Uploading the PDF…' : 'Saving…' })
     try {
-      let document: DocumentChange = { kind: 'keep' }
-      if (state.doc.kind === 'file') {
-        const { key } = await uploadFile(state.doc.file, 'pdf')
-        document = { kind: 'upload', key, filename: state.doc.file.name }
-      } else if (state.doc.kind === 'latex') {
-        document = { kind: 'latex', source: state.doc.source }
-      }
+      const document: DocumentChange = await documentChangeFor(state.doc, data)
       setStatus({ kind: 'saving', message: 'Saving…' })
       const clean = (list: string[]) => list.map((item) => item.trim()).filter(Boolean)
       const result = await saveProjectPageAction({
@@ -235,7 +235,7 @@ export function ProjectPageEditor({
     } catch (error) {
       setStatus({ kind: 'error', message: error instanceof Error ? error.message : 'Saving failed.' })
     }
-  }, [state, data.id, setStatus, markSaved])
+  }, [state, data, setStatus, markSaved])
 
   const embedOrigin = (() => {
     try {
@@ -459,16 +459,20 @@ export function ProjectPageEditor({
             </div>
             <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
               <span className="text-xs text-muted-foreground">
-                Document (PDF or LaTeX) — shown by a Document section, or as the whole page when there are no
-                sections.
+                Document (a PDF, or LaTeX shown as an article) — shown by a Document section, or as the whole
+                page when there are no sections.
               </span>
-              <DocumentControl
-                current={{ url: data.pdfUrl, filename: data.pdfFilename, contentType: data.contentType }}
-                pending={state.doc}
-                latexSource={data.latexSource}
-                onChange={(doc) => update({ doc })}
-              />
+              <DocumentSummary current={data} draft={state.doc} open={documentOpen} onToggle={() => setDocumentOpen((v) => !v)} />
             </div>
+            {documentOpen && (
+              <DocumentConsole
+                className="mt-4"
+                current={data}
+                draft={state.doc}
+                onChange={(doc) => update({ doc })}
+                onClose={() => setDocumentOpen(false)}
+              />
+            )}
           </section>
 
           <div className="pt-8">
@@ -486,7 +490,9 @@ export function ProjectPageEditor({
                     update({
                       sections: [
                         ...defaultSections(),
-                        ...(data.pdfUrl ? [newSection('document', newClientKey('section'))] : []),
+                        ...(data.pdfUrl || (data.contentType === 'latex' && data.latexSource)
+                          ? [newSection('document', newClientKey('section'))]
+                          : []),
                       ],
                     })
                   }
@@ -667,7 +673,7 @@ function emptyReason(section: ProjectSection, project: PublicProjectDetail, outp
     case 'app':
       return 'No embedded app URL set in Live data — hidden from visitors.'
     case 'document':
-      return project.pdfUrl
+      return project.pdfUrl || (project.contentType === 'latex' && project.latexSource)
         ? ''
         : 'No document yet — add a PDF or LaTeX source in Page & document. Hidden from visitors until then.'
     default:

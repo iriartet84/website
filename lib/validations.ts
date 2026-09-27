@@ -8,7 +8,17 @@ import {
   updateFrequencies,
 } from "@/lib/project-meta"
 
+// Ceiling for a PDF that has to pass through a Server Action (the fallback
+// upload path used when no S3-compatible bucket is configured — see
+// lib/blobs.ts). That request transits a Netlify Function, which caps
+// payloads well under this already.
 export const MAX_PDF_BYTES = 8 * 1024 * 1024
+// Ceiling for a PDF uploaded straight to the bucket via a presigned URL
+// (components/admin/upload.ts), which never passes through a function —
+// the whole point of that path (see lib/blobs.ts) is to allow bigger files
+// than MAX_PDF_BYTES. checkUpload in app/admin/editor-actions.ts is what
+// actually enforces this, since a presigned PUT can't cap its own size.
+export const MAX_PDF_BYTES_BUCKET = 25 * 1024 * 1024
 export const MAX_LATEX_CHARS = 200_000
 
 export const contentTypeSchema = z.enum(["pdf", "latex"])
@@ -129,16 +139,27 @@ const tagListSchema = z
 const clientKeySchema = z.string().min(1).max(80)
 const rowIdSchema = z.number().int().positive().nullable()
 
-export const documentChangeSchema = z.discriminatedUnion("kind", [
+// The PDF that goes with a document: for a PDF document it's the document
+// itself; for a LaTeX article it's optional and powers "Download PDF".
+export const attachedPdfChangeSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("keep") }),
   z.object({
     kind: z.literal("upload"),
     key: z.string().min(1).max(300),
     filename: z.string().trim().min(1).max(200),
   }),
+  z.object({ kind: z.literal("remove") }),
+])
+
+// A paper's or project's document is either a PDF (shown in the reader) or
+// LaTeX (shown as an article on the page — see lib/latex-article.ts).
+export const documentChangeSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("keep") }),
+  z.object({ kind: z.literal("pdf"), pdf: attachedPdfChangeSchema }),
   z.object({
     kind: z.literal("latex"),
-    source: z.string().trim().min(1, "LaTeX source is empty").max(MAX_LATEX_CHARS),
+    source: z.string().trim().min(1, "LaTeX source is empty").max(MAX_LATEX_CHARS, "The LaTeX source is too long"),
+    pdf: attachedPdfChangeSchema,
   }),
 ])
 
@@ -174,6 +195,7 @@ export const paperItemSchema = z.object({
   type: z.enum(["Paper", "Report", "Brief"]),
   date: entryDate,
   excerpt: entryDescription,
+  longAbstract: z.string().trim().max(10000, "Long abstract is too long (10,000 characters max)").default(""),
   tags: tagListSchema,
   published: z.boolean(),
   document: documentChangeSchema,
@@ -323,4 +345,5 @@ export type ExperienceItemInput = z.infer<typeof experienceItemSchema>
 export type EducationItemInput = z.infer<typeof educationItemSchema>
 export type LanguageItemInput = z.infer<typeof languageItemSchema>
 export type DocumentChange = z.infer<typeof documentChangeSchema>
+export type AttachedPdfChange = z.infer<typeof attachedPdfChangeSchema>
 export type CvPdfChange = z.infer<typeof cvPdfChangeSchema>

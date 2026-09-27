@@ -388,6 +388,7 @@ export async function getPublicPaperBySlug(
       pdfUrl: row.pdfUrl,
       date: row.date.toISOString(),
       abstract: row.abstract || row.excerpt,
+      longAbstract: row.longAbstract?.trim() || null,
       contentType: row.contentType,
       latexSource: row.latexSource,
       pdfFilename: row.pdfFilename,

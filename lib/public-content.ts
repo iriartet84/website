@@ -64,6 +64,7 @@ export function staticPublicPapers(): PublicPaper[] {
 
 export type PublicPaperDetail = PublicPaper & {
   abstract: string
+  longAbstract: string | null
   contentType: string
   latexSource: string | null
   pdfFilename: string | null
@@ -85,6 +86,7 @@ export function staticPublicPaperDetails(): PublicPaperDetail[] {
   return staticPublicPapers().map((paper) => ({
     ...paper,
     abstract: paper.excerpt,
+    longAbstract: null,
     contentType: 'pdf',
     latexSource: null,
     pdfFilename: null,
