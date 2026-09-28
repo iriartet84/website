@@ -7,6 +7,8 @@ export const profile = {
   phone: '+54 9 11 7019 1591',
   linkedin: 'linkedin.com/in/tiriarte',
   linkedinUrl: 'https://linkedin.com/in/tiriarte',
+  github: 'github.com/iriartet84',
+  githubUrl: 'https://github.com/iriartet84',
   nationality: 'Argentina · Spain',
   location: 'Barcelona, Spain',
 }

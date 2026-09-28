@@ -65,6 +65,9 @@ export const paperEntries = pgTable("paper_entries", {
   // Optional longer abstract shown in a box at the top of the paper's page
   // (plain text; blank lines separate paragraphs). Null/empty = no box.
   longAbstract: text("longAbstract"),
+  // Optional link to the paper's code repository. Shown as a GitHub button
+  // on the paper's own page and on the /papers listing card when set.
+  githubUrl: text("githubUrl"),
   tags: text("tags").notNull().default(""),
   methods: text("methods").notNull().default(""),
   contentType: text("contentType").notNull().default("pdf"),

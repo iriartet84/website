@@ -29,11 +29,11 @@ export function Skillset({
             as="p"
             value={content.eyebrow}
             label="Skillset eyebrow"
-            className="text-xs font-medium uppercase tracking-[0.25em] text-steel-700"
+            className="text-sm font-semibold uppercase tracking-[0.2em] text-steel-700 md:text-base"
             onChange={edit.onEyebrowChange}
           />
         ) : (
-          <p className="text-xs font-medium uppercase tracking-[0.25em] text-steel-700">
+          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-steel-700 md:text-base">
             {content.eyebrow}
           </p>
         )}
@@ -42,7 +42,7 @@ export function Skillset({
           {content.items.map((skill, index) => {
             const card = (
               <div key={skill.id} className={edit ? 'flex h-full flex-col' : 'flex flex-col'}>
-                <span className="font-serif text-8xl leading-none text-steel md:text-9xl">
+                <span className="font-serif text-5xl leading-none text-steel md:text-6xl">
                   {indexLabel(index)}
                 </span>
                 {edit ? (

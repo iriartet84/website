@@ -186,6 +186,16 @@ const entryDescription = z
   .min(20, "Description needs at least 20 characters")
   .max(2000, "Description is too long")
 
+// Empty (no repository link) or a https:// address — same rule as a
+// project's own links (lib/project-meta.ts's httpsUrl), kept local here
+// since papers don't use the general links[] mechanism.
+const optionalGithubUrl = z
+  .string()
+  .trim()
+  .max(300, "GitHub URL is too long (300 characters max)")
+  .refine((value) => value === "" || /^https:\/\/[^\s]+$/.test(value), "Must be a https:// address")
+  .default("")
+
 export const paperItemSchema = z.object({
   clientKey: clientKeySchema,
   id: rowIdSchema,
@@ -196,6 +206,7 @@ export const paperItemSchema = z.object({
   date: entryDate,
   excerpt: entryDescription,
   longAbstract: z.string().trim().max(10000, "Long abstract is too long (10,000 characters max)").default(""),
+  githubUrl: optionalGithubUrl,
   tags: tagListSchema,
   published: z.boolean(),
   document: documentChangeSchema,

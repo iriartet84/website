@@ -4,8 +4,10 @@ import { notFound } from 'next/navigation'
 import { Download } from 'lucide-react'
 import { PdfViewer } from '@/components/pdf-viewer'
 import { LatexArticleView } from '@/components/latex-article-view'
+import { GithubIcon } from '@/components/social-links'
 import { getPublicPaperBySlug } from '@/lib/queries'
 import { renderLatexArticle } from '@/lib/latex-article'
+import { cn } from '@/lib/utils'
 
 export const revalidate = 3600
 
@@ -99,7 +101,7 @@ export default async function PaperDetailPage({ params }: PageProps) {
           <p className="mt-5 max-w-none text-pretty text-lg leading-relaxed text-muted-foreground">
             {paper.abstract}
           </p>
-          {(paper.tags.length > 0 || (article && downloadUrl)) && (
+          {(paper.tags.length > 0 || (article && downloadUrl) || paper.githubUrl) && (
             <div className="mt-5 flex flex-wrap items-center gap-2">
               {paper.tags.map((tag) => (
                 <span
@@ -109,6 +111,20 @@ export default async function PaperDetailPage({ params }: PageProps) {
                   {tag}
                 </span>
               ))}
+              {paper.githubUrl && (
+                <a
+                  href={paper.githubUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={cn(
+                    'inline-flex items-center gap-2 rounded-full border border-border bg-white px-4 py-2 text-sm font-medium text-navy transition-colors hover:border-steel/40 hover:bg-secondary print:hidden',
+                    !(article && downloadUrl) && 'ml-auto',
+                  )}
+                >
+                  <GithubIcon className="size-4" />
+                  GitHub
+                </a>
+              )}
               {article && downloadUrl && (
                 <a
                   href={downloadUrl}

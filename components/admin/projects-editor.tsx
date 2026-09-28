@@ -250,6 +250,7 @@ export function ProjectsEditor({ data }: { data: ProjectsEditorData }) {
                 featured: row.featured,
                 updateFrequency: row.updateFrequency,
                 output: row.output,
+                links: [],
               }
               return (
                 <EditableItem

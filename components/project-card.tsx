@@ -14,6 +14,7 @@ import {
   toolChipClass,
 } from '@/components/project-badges'
 import { EditableSelect, EditableTags, EditableText } from '@/components/admin/editable'
+import { GithubIcon } from '@/components/social-links'
 import { formatChange, formatValue, projectLifecycles, projectModes, projectTypes } from '@/lib/project-meta'
 import type { PublicProject } from '@/lib/public-content'
 
@@ -86,11 +87,26 @@ export function ProjectCard({ project, edit }: { project: PublicProject; edit?: 
       {project.category}
     </span>
   )
+  // Shown as a GitHub button on the card only when a "repository" link is
+  // set on the project's own page (components/admin/project-page-editor.tsx).
+  const repoLink = project.links.find((link) => link.kind === 'repository')
 
   const body = (
     <>
       <div className="relative h-48 overflow-hidden bg-navy">
         <ProjectLivePanel project={project} />
+        {!edit && repoLink && (
+          <a
+            href={repoLink.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="View repository on GitHub"
+            title="View repository on GitHub"
+            className="absolute right-4 top-4 z-10 inline-flex size-8 items-center justify-center rounded-full bg-white/90 text-navy backdrop-blur transition-colors hover:bg-white"
+          >
+            <GithubIcon className="size-4" />
+          </a>
+        )}
         {edit ? (
           <>
             <span className="absolute left-4 top-4">
@@ -263,11 +279,12 @@ export function ProjectCard({ project, edit }: { project: PublicProject; edit?: 
   }
 
   return (
-    <Link
-      href={`/projects/${project.slug}`}
-      className="group flex flex-col overflow-hidden rounded-2xl bg-white shadow-sm shadow-navy/5 transition-all hover:-translate-y-1 hover:shadow-lg hover:shadow-navy/10"
-    >
+    <div className="group relative flex flex-col overflow-hidden rounded-2xl bg-white shadow-sm shadow-navy/5 transition-all hover:-translate-y-1 hover:shadow-lg hover:shadow-navy/10">
+      {/* Covers the whole card so it's clickable anywhere; the GitHub
+          button above sits in a later stacking position so it still gets
+          its own clicks (see the repoLink `<a>` in the preview panel). */}
+      <Link href={`/projects/${project.slug}`} className="absolute inset-0" aria-label={project.title} />
       {body}
-    </Link>
+    </div>
   )
 }

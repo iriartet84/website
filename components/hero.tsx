@@ -19,7 +19,7 @@ export function Hero({
     'inline-flex items-center gap-2 rounded-full border border-border bg-white px-5 py-3 text-sm font-medium text-navy transition-colors hover:bg-secondary'
 
   return (
-    <section className="relative flex min-h-screen flex-col justify-center overflow-hidden bg-background">
+    <section className="relative flex min-h-[68vh] flex-col justify-center overflow-hidden bg-background py-20 md:min-h-[72vh]">
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 opacity-[0.4]"
@@ -33,19 +33,6 @@ export function Hero({
       />
 
       <div className="relative mx-auto w-full max-w-6xl px-5 sm:px-8">
-        <p className="mb-5 inline-flex items-center gap-2 rounded-full bg-steel/10 px-3.5 py-1.5 text-xs font-medium uppercase tracking-[0.2em] text-steel-700">
-          <span className="size-1.5 rounded-full bg-steel" />
-          {edit ? (
-            <EditableText
-              value={content.eyebrow}
-              label="Hero eyebrow"
-              onChange={(value) => edit.onChange('eyebrow', value)}
-            />
-          ) : (
-            content.eyebrow
-          )}
-        </p>
-
         <h1 className="font-serif text-3xl leading-tight tracking-tight text-navy sm:text-4xl">
           {edit ? (
             <>

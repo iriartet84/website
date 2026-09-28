@@ -15,6 +15,7 @@ export type PublicPaper = {
   tags: string[]
   pdfUrl: string | null
   date: string
+  githubUrl: string | null
 }
 
 export type PublicProject = {
@@ -39,6 +40,10 @@ export type PublicProject = {
   updateFrequency: string | null
   // First headline figure + sparkline from the stored output, if any.
   output: OutputSummary | null
+  // Repository / demo / docs links (see lib/project-meta.ts). Exposed on the
+  // summary too (not just the detail page) so the card can show a GitHub
+  // button when a "repository" link is set.
+  links: ProjectLink[]
 }
 
 function slugify(value: string) {
@@ -59,6 +64,7 @@ export function staticPublicPapers(): PublicPaper[] {
     tags: paper.methods,
     pdfUrl: null,
     date: `${paper.year}-01-01`,
+    githubUrl: null,
   }))
 }
 
@@ -75,7 +81,6 @@ export type PublicProjectDetail = PublicProject & {
   contentType: string
   latexSource: string | null
   pdfFilename: string | null
-  links: ProjectLink[]
   embedUrl: string | null
   // Empty = the original single-document page.
   sections: ProjectSection[]

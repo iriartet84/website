@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Download, Mail, Plus, X } from 'lucide-react'
-import { LinkedInIcon } from '@/components/social-links'
+import { LinkedInIcon, GithubIcon } from '@/components/social-links'
+import { profile } from '@/lib/content'
 import { PageHeader } from '@/components/page-header'
 import { EditableBullets, EditableTags, EditableText } from '@/components/admin/editable'
 import type {
@@ -135,7 +136,7 @@ export function CvView({
 
       <div className="mx-auto max-w-6xl px-5 sm:px-8">
         {/* Quick facts */}
-        <div className="flex flex-wrap gap-x-8 gap-y-3 py-8 text-sm">
+        <div className="flex flex-wrap items-center gap-x-8 gap-y-3 py-8 text-sm">
           <span className="text-muted-foreground">
             Nationality — {text(cv.nationality, 'Nationality', profileSetter('nationality'), 'text-navy')}
           </span>
@@ -156,6 +157,15 @@ export function CvView({
                   onChange={(linkedin) => edit.onProfileChange({ linkedin })}
                 />
               </span>
+              <a
+                href={profile.githubUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-navy hover:opacity-70"
+              >
+                <GithubIcon className="size-4" />
+                {profile.github}
+              </a>
               {edit.contactSettings}
               <span className="ml-auto">{edit.downloadControl}</span>
             </>
@@ -176,6 +186,15 @@ export function CvView({
               >
                 <LinkedInIcon className="size-4" />
                 {cv.linkedin}
+              </a>
+              <a
+                href={profile.githubUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-navy hover:opacity-70"
+              >
+                <GithubIcon className="size-4" />
+                {profile.github}
               </a>
               {cv.cvPdfUrl && (
                 <a

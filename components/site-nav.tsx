@@ -17,7 +17,7 @@ const links = [
 // At rest: regular weight, in the same near-black as page titles. The
 // current page keeps its bold label on the site's slate-blue chip (--steel);
 // hovering shows a lighter chip.
-const navPill = 'rounded-full px-4 py-2 text-sm transition-colors'
+const navPill = 'rounded-full px-5 py-2.5 text-base transition-colors'
 const navPillActive = 'bg-steel/20 font-bold text-navy'
 const navPillInactive = 'font-normal text-navy hover:bg-steel/10'
 
@@ -59,7 +59,7 @@ export function SiteNav() {
           : 'border-b border-transparent bg-transparent',
       )}
     >
-      <nav className="relative mx-auto flex h-16 max-w-6xl items-center px-5 sm:px-8">
+      <nav className="relative mx-auto flex h-20 max-w-6xl items-center px-5 sm:px-8">
         <div className="hidden items-center gap-1 md:absolute md:left-1/2 md:flex md:-translate-x-1/2">
           {links.map((link) => {
             const active =
@@ -85,9 +85,9 @@ export function SiteNav() {
             onClick={() => setMenuOpen((v) => !v)}
             aria-label={menuOpen ? 'Close menu' : 'Open menu'}
             aria-expanded={menuOpen}
-            className="flex size-9 items-center justify-center rounded-full text-navy transition-colors hover:bg-secondary md:hidden"
+            className="flex size-10 items-center justify-center rounded-full text-navy transition-colors hover:bg-secondary md:hidden"
           >
-            {menuOpen ? <X className="size-5" /> : <Menu className="size-5" />}
+            {menuOpen ? <X className="size-6" /> : <Menu className="size-6" />}
           </button>
         </div>
       </nav>
@@ -105,7 +105,7 @@ export function SiteNav() {
                   key={link.href}
                   href={link.href}
                   className={cn(
-                    'rounded-lg px-3 py-2.5 text-sm transition-colors',
+                    'rounded-lg px-3 py-2.5 text-base transition-colors',
                     active ? navPillActive : 'font-normal text-navy hover:bg-secondary',
                   )}
                 >

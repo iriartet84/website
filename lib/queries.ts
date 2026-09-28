@@ -278,6 +278,7 @@ export async function getPublishedPapers(): Promise<PublicPaper[]> {
       tags: parseTags(row.tags || row.methods),
       pdfUrl: row.pdfUrl,
       date: row.date.toISOString(),
+      githubUrl: row.githubUrl,
     }))
   } catch {
     return staticPublicPapers()
@@ -325,6 +326,7 @@ function toPublicProject(row: ProjectRow, output: ProjectOutput | null): PublicP
     featured: row.featured,
     updateFrequency: row.updateFrequency,
     output: summariseOutput(output),
+    links: validItems<ProjectLink>(row.links, projectLinkSchema),
   }
 }
 
@@ -387,6 +389,7 @@ export async function getPublicPaperBySlug(
       tags: parseTags(row.tags || row.methods),
       pdfUrl: row.pdfUrl,
       date: row.date.toISOString(),
+      githubUrl: row.githubUrl,
       abstract: row.abstract || row.excerpt,
       longAbstract: row.longAbstract?.trim() || null,
       contentType: row.contentType,
@@ -427,7 +430,6 @@ export async function getPublicProjectBySlug(
       contentType: row.contentType,
       latexSource: row.latexSource,
       pdfFilename: row.pdfFilename,
-      links: validItems<ProjectLink>(row.links, projectLinkSchema),
       embedUrl: row.embedUrl,
       sections: validItems<ProjectSection>(row.sections, projectSectionSchema),
       fullOutput: output,

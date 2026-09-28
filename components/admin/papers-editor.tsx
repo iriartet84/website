@@ -51,6 +51,7 @@ export type PapersEditorData = {
     id: number
     published: boolean
     longAbstract: string
+    githubUrl: string
     contentType: string
     pdfUrl: string | null
     pdfFilename: string | null
@@ -61,6 +62,7 @@ export type PapersEditorData = {
 
 type Row = PaperFields & {
   longAbstract: string
+  githubUrl: string
   clientKey: string
   id: number | null
   published: boolean
@@ -93,6 +95,7 @@ function build(data: PapersEditorData): State {
           removed: false,
           slugTouched: true,
           longAbstract: '',
+          githubUrl: '',
           contentType: 'pdf',
           pdfUrl: null,
           pdfFilename: null,
@@ -163,6 +166,7 @@ export function PapersEditor({ data }: { data: PapersEditorData }) {
       removed: false,
       slugTouched: false,
       longAbstract: '',
+      githubUrl: '',
       contentType: 'pdf',
       pdfUrl: null,
       pdfFilename: null,
@@ -195,6 +199,7 @@ export function PapersEditor({ data }: { data: PapersEditorData }) {
           date: row.date,
           excerpt: row.excerpt.trim(),
           longAbstract: row.longAbstract.trim(),
+          githubUrl: row.githubUrl.trim(),
           tags: row.tags.map((tag) => tag.trim()).filter(Boolean),
           published: row.published,
           document,
@@ -351,6 +356,7 @@ export function PapersEditor({ data }: { data: PapersEditorData }) {
                       tags: row.tags,
                       pdfUrl: row.pdfUrl,
                       date: row.date,
+                      githubUrl: row.githubUrl || null,
                     }}
                     edit={{
                       categories: data.categories,
@@ -389,10 +395,16 @@ export function PapersEditor({ data }: { data: PapersEditorData }) {
                       onChange={(doc) => updateRow(row.clientKey, { doc })}
                       onClose={() => toggleDocument(row.clientKey)}
                       pageFields={
-                        <LongAbstractField
-                          value={row.longAbstract}
-                          onChange={(longAbstract) => updateRow(row.clientKey, { longAbstract })}
-                        />
+                        <div className="space-y-4">
+                          <LongAbstractField
+                            value={row.longAbstract}
+                            onChange={(longAbstract) => updateRow(row.clientKey, { longAbstract })}
+                          />
+                          <GithubUrlField
+                            value={row.githubUrl}
+                            onChange={(githubUrl) => updateRow(row.clientKey, { githubUrl })}
+                          />
+                        </div>
                       }
                     />
                   )}
@@ -444,6 +456,31 @@ function LongAbstractField({ value, onChange }: { value: string; onChange: (valu
         rows={5}
         placeholder="Plain text. Leave a blank line between paragraphs."
         className="mt-2 w-full resize-y rounded-lg border border-border bg-white px-3 py-2 text-sm leading-relaxed text-navy outline-none focus:border-steel focus:ring-2 focus:ring-steel/20"
+      />
+    </div>
+  )
+}
+
+// The paper's optional GitHub repository link. Shows a GitHub button on
+// the paper's page and its /papers listing card when set.
+function GithubUrlField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const id = useId()
+  return (
+    <div>
+      <label htmlFor={id} className="text-xs font-semibold text-navy">
+        GitHub Repository (optional)
+      </label>
+      <p id={`${id}-hint`} className="mt-0.5 text-xs text-muted-foreground">
+        Adds a GitHub button on this paper&rsquo;s page and its listing card. Leave empty to hide.
+      </p>
+      <input
+        id={id}
+        type="url"
+        aria-describedby={`${id}-hint`}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder="https://github.com/username/repository"
+        className="mt-2 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy outline-none focus:border-steel focus:ring-2 focus:ring-steel/20"
       />
     </div>
   )

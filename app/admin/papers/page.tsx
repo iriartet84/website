@@ -27,6 +27,7 @@ export default async function AdminPapersPage() {
       date: row.date.toISOString().slice(0, 10),
       excerpt: row.excerpt || row.abstract,
       longAbstract: row.longAbstract ?? '',
+      githubUrl: row.githubUrl ?? '',
       tags: parseTags(row.tags || row.methods),
       published: row.published,
       contentType: row.contentType,

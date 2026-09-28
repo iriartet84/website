@@ -338,6 +338,7 @@ export async function savePapersPageAction(
           excerpt: item.excerpt,
           abstract: item.excerpt,
           longAbstract: item.longAbstract || null,
+          githubUrl: item.githubUrl || null,
           tags,
           methods: tags,
           published: item.published,

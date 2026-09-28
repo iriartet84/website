@@ -4,6 +4,7 @@ import { useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import { EditableSelect, EditableTags, EditableText } from '@/components/admin/editable'
+import { GithubIcon } from '@/components/social-links'
 import type { PublicPaper } from '@/lib/public-content'
 
 const typeStyles: Record<string, string> = {
@@ -124,12 +125,29 @@ export function PaperArticle({ paper, edit }: { paper: PublicPaper; edit?: Paper
         {edit ? (
           <span className="ml-auto">{edit.documentControl}</span>
         ) : (
-          <Link
-            href={`/papers/${paper.slug}`}
-            className="ml-auto text-sm font-semibold text-steel-700 transition-colors hover:text-navy"
-          >
-            Read full paper &rarr;
-          </Link>
+          <>
+            {paper.githubUrl && (
+              <a
+                href={paper.githubUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="View repository on GitHub"
+                title="View repository on GitHub"
+                className="ml-auto inline-flex size-8 items-center justify-center rounded-full border border-border bg-white text-navy transition-colors hover:border-steel/40 hover:bg-secondary"
+              >
+                <GithubIcon className="size-4" />
+              </a>
+            )}
+            <Link
+              href={`/papers/${paper.slug}`}
+              className={cn(
+                'text-sm font-semibold text-steel-700 transition-colors hover:text-navy',
+                !paper.githubUrl && 'ml-auto',
+              )}
+            >
+              Read full paper &rarr;
+            </Link>
+          </>
         )}
       </div>
     </article>

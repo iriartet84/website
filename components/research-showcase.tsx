@@ -86,7 +86,7 @@ export function ResearchShowcase({
                   as="p"
                   value={content.eyebrow}
                   label="Research eyebrow"
-                  className="text-xs font-medium uppercase tracking-[0.25em] text-steel-700"
+                  className="text-sm font-semibold uppercase tracking-[0.2em] text-steel-700 md:text-base"
                   onChange={(value) => edit.onHeaderChange('eyebrow', value)}
                 />
                 <EditableText
@@ -99,7 +99,7 @@ export function ResearchShowcase({
               </>
             ) : (
               <>
-                <p className="text-xs font-medium uppercase tracking-[0.25em] text-steel-700">
+                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-steel-700 md:text-base">
                   {content.eyebrow}
                 </p>
                 <h2 className="mt-3 font-serif text-3xl tracking-tight text-navy md:text-4xl">
@@ -147,7 +147,7 @@ export function ResearchShowcase({
                     className="size-full object-cover"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-navy/80 to-transparent" />
-                  <span className="absolute left-5 top-5 font-serif text-4xl text-white/90">
+                  <span className="absolute left-5 top-5 font-serif text-2xl text-white/90">
                     {indexLabel(i)}
                   </span>
                   {edit ? (
