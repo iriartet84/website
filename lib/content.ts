@@ -3,7 +3,7 @@ export const profile = {
   fullName: 'Toribio Iriarte Fernández',
   tagline:
     'Graduate economist with experience in commodity, macroeconomic, financial markets, and geopolitical risk research, including work at the European Commission and the United Nations.',
-  email: 'iriartet84@gmail.com',
+  email: 'toribioiriarte@gmail.com',
   phone: '+54 9 11 7019 1591',
   linkedin: 'linkedin.com/in/tiriarte',
   linkedinUrl: 'https://linkedin.com/in/tiriarte',
