@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { ExternalLink, ImageUp, Link2, Plus, RotateCcw, Star } from 'lucide-react'
+import { ExternalLink, ImageUp, Link2, Move, Plus, RotateCcw, SlidersHorizontal, Star, Trash2 } from 'lucide-react'
 import { Hero } from '@/components/hero'
 import { ResearchShowcase } from '@/components/research-showcase'
 import { FeaturedProjects } from '@/components/featured-projects'
@@ -22,22 +22,37 @@ import { uploadFile, validateFile } from '@/components/admin/upload'
 import { focusItem, moveItem, newClientKey, useEditorState } from '@/components/admin/use-editor-state'
 import { saveHomeContentAction } from '@/app/admin/editor-actions'
 import { confirmLeaveWithUnsavedChanges } from '@/components/admin/unsaved-guard'
-import type { HomeContent, HomeResearchSection } from '@/lib/site-content-shared'
+import {
+  defaultHeroBackground,
+  defaultHeroPhoto,
+  type HeroBackground,
+  type HeroPhoto,
+  type HomeContent,
+  type HomeResearchSection,
+} from '@/lib/site-content-shared'
 import type { PublicProject } from '@/lib/public-content'
 
 // /admin/home: the public home page rendered with the same components
 // (Hero, ResearchShowcase or FeaturedProjects, Skillset), in edit mode.
 // Once any published project is featured (chosen on /admin/projects),
 // Featured Projects replaces Research Focus on the public page; Research
-// Focus stays editable here behind a toggle. Research card images
-// can be replaced: a new image is previewed locally, then uploaded to the
-// private bucket through a presigned URL when the page is saved.
+// Focus stays editable here behind a toggle. Research card images, the
+// hero photo and the hero background can be replaced: a new image is
+// previewed locally, then uploaded to the private bucket through a
+// presigned URL when the page is saved. The photo's size, side, alignment,
+// shape and framing, and the background's opacity, size, position and fade
+// are set from their settings popovers (the photo can also be dragged to
+// reframe it).
 
 type State = {
   content: HomeContent
-  // Images picked but not uploaded yet, by research card id.
+  // Images picked but not uploaded yet, by research card id — or by
+  // HERO_PHOTO / HERO_BACKGROUND for the hero's.
   images: Record<string, File>
 }
+
+const HERO_PHOTO = 'hero:photo'
+const HERO_BACKGROUND = 'hero:background'
 
 function build(content: HomeContent): State {
   return { content, images: {} }
@@ -70,6 +85,18 @@ export function HomeEditor({ content: initial, featured }: { content: HomeConten
       },
     }))
 
+  const updatePhoto = (patch: Partial<HeroPhoto>) =>
+    setContent((c) => ({ ...c, hero: { ...c.hero, photo: { ...c.hero.photo, ...patch } } }))
+  const updateBackground = (patch: Partial<HeroBackground>) =>
+    setContent((c) => ({ ...c, hero: { ...c.hero, background: { ...c.hero.background, ...patch } } }))
+  const dropPending = (key: string) =>
+    setState((s) => {
+      const images = { ...s.images }
+      delete images[key]
+      return { ...s, images }
+    })
+  const pick = (key: string) => (file: File) => setState((s) => ({ ...s, images: { ...s.images, [key]: file } }))
+
   const save = useCallback(async () => {
     const pending = Object.entries(state.images)
     setStatus({
@@ -84,6 +111,15 @@ export function HomeEditor({ content: initial, featured }: { content: HomeConten
       }
       const next: HomeContent = {
         ...state.content,
+        hero: {
+          ...state.content.hero,
+          photo: uploaded[HERO_PHOTO]
+            ? { ...state.content.hero.photo, image: uploaded[HERO_PHOTO] }
+            : state.content.hero.photo,
+          background: uploaded[HERO_BACKGROUND]
+            ? { ...state.content.hero.background, image: uploaded[HERO_BACKGROUND] }
+            : state.content.hero.background,
+        },
         research: {
           ...state.content.research,
           sections: state.content.research.sections.map((section) =>
@@ -120,6 +156,13 @@ export function HomeEditor({ content: initial, featured }: { content: HomeConten
       previews[section.id] ? { ...section, image: previews[section.id] } : section,
     ),
   }
+  const displayHero = {
+    ...content.hero,
+    photo: previews[HERO_PHOTO] ? { ...content.hero.photo, image: previews[HERO_PHOTO] } : content.hero.photo,
+    background: previews[HERO_BACKGROUND]
+      ? { ...content.hero.background, image: previews[HERO_BACKGROUND] }
+      : content.hero.background,
+  }
   const sectionCount = content.research.sections.length
   const skillCount = content.skills.items.length
 
@@ -133,9 +176,35 @@ export function HomeEditor({ content: initial, featured }: { content: HomeConten
 
       <main className="pb-32">
         <Hero
-          content={content.hero}
+          content={displayHero}
           edit={{
             onChange: (field, value) => setContent((c) => ({ ...c, hero: { ...c.hero, [field]: value } })),
+            photoControl: (
+              <HeroPhotoControl
+                photo={displayHero.photo}
+                hasPending={Boolean(state.images[HERO_PHOTO])}
+                onChange={updatePhoto}
+                onPick={pick(HERO_PHOTO)}
+                onUndo={() => dropPending(HERO_PHOTO)}
+                onImage={(image) => {
+                  updatePhoto({ image })
+                  dropPending(HERO_PHOTO)
+                }}
+              />
+            ),
+            backgroundControl: (
+              <HeroBackgroundControl
+                background={displayHero.background}
+                hasPending={Boolean(state.images[HERO_BACKGROUND])}
+                onChange={updateBackground}
+                onPick={pick(HERO_BACKGROUND)}
+                onUndo={() => dropPending(HERO_BACKGROUND)}
+                onImage={(image) => {
+                  updateBackground({ image })
+                  dropPending(HERO_BACKGROUND)
+                }}
+              />
+            ),
           }}
         />
 
@@ -430,6 +499,386 @@ function ImageControl({
       </div>
       {hasPending && <span className="rounded-full bg-navy/80 px-2 py-0.5 font-sans text-[11px] text-white">Uploads on save</span>}
       {error && <span className="rounded bg-white px-2 py-0.5 font-sans text-[11px] text-destructive">{error}</span>}
+    </div>
+  )
+}
+
+// ---- Hero photo & background ------------------------------------------------
+
+const heroChip =
+  'inline-flex items-center gap-1 rounded-full bg-white/95 px-2.5 py-1 font-sans text-xs font-medium text-navy shadow-sm ring-1 ring-navy/10 backdrop-blur transition-colors hover:bg-white'
+
+function RangeField({
+  label,
+  value,
+  min,
+  max,
+  step = 1,
+  unit = '',
+  onChange,
+}: {
+  label: string
+  value: number
+  min: number
+  max: number
+  step?: number
+  unit?: string
+  onChange: (value: number) => void
+}) {
+  return (
+    <label className="block">
+      <span className="flex items-baseline justify-between text-xs font-medium text-navy">
+        {label}
+        <span className="tabular-nums text-muted-foreground">
+          {Math.round(value)}
+          {unit}
+        </span>
+      </span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+        className="mt-1 w-full accent-[var(--steel)]"
+      />
+    </label>
+  )
+}
+
+function Segmented<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string
+  value: T
+  options: { value: T; label: string }[]
+  onChange: (value: T) => void
+}) {
+  return (
+    <div>
+      <span className="text-xs font-medium text-navy">{label}</span>
+      <div role="radiogroup" aria-label={label} className="mt-1 flex gap-1 rounded-lg bg-secondary p-0.5">
+        {options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            aria-checked={value === option.value}
+            onClick={() => onChange(option.value)}
+            className={
+              value === option.value
+                ? 'flex-1 rounded-md bg-white px-2 py-1 text-xs font-medium text-navy shadow-sm'
+                : 'flex-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-navy'
+            }
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// "Replace" (pick a file — previewed now, uploaded on save) + "Undo". The
+// image-address field lives in the settings popover (ImageAddressField).
+function ImagePicker({
+  label,
+  hasPending,
+  image,
+  onPick,
+  onUndo,
+}: {
+  label: string
+  hasPending: boolean
+  image: string
+  onPick: (file: File) => void
+  onUndo: () => void
+}) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [error, setError] = useState<string | null>(null)
+  return (
+    <>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/gif"
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0]
+          event.target.value = ''
+          if (!file) return
+          const problem = validateFile(file, 'image')
+          setError(problem)
+          if (!problem) onPick(file)
+        }}
+      />
+      <button type="button" className={heroChip} onClick={() => inputRef.current?.click()}>
+        <ImageUp className="size-3.5" />
+        {hasPending ? 'Change' : image ? `Replace ${label}` : `Add ${label}`}
+      </button>
+      {hasPending && (
+        <button type="button" className={heroChip} onClick={onUndo}>
+          <RotateCcw className="size-3.5" />
+          Undo
+        </button>
+      )}
+      {hasPending && <span className="rounded-full bg-navy/80 px-2 py-0.5 font-sans text-[11px] text-white">Uploads on save</span>}
+      {error && <span className="rounded bg-white px-2 py-0.5 font-sans text-[11px] text-destructive">{error}</span>}
+    </>
+  )
+}
+
+function ImageAddressField({ image, onImage, hint }: { image: string; onImage: (url: string) => void; hint: string }) {
+  const [url, setUrl] = useState(image.startsWith('blob:') ? '' : image)
+  return (
+    <div className="space-y-2">
+      <SettingsField label="Image path or URL" hint={hint}>
+        <input className={settingsInput} value={url} onChange={(event) => setUrl(event.target.value)} />
+      </SettingsField>
+      <button
+        type="button"
+        onClick={() => onImage(url.trim())}
+        disabled={url.trim() === image}
+        className="rounded-full bg-navy px-3 py-1.5 text-xs font-medium text-white hover:bg-navy-800 disabled:opacity-50"
+      >
+        Use this address
+      </button>
+    </div>
+  )
+}
+
+// Over the hero photo: drag it to reframe (moves the focal point); chips
+// to replace it and open its settings.
+function HeroPhotoControl({
+  photo,
+  hasPending,
+  onChange,
+  onPick,
+  onUndo,
+  onImage,
+}: {
+  photo: HeroPhoto
+  hasPending: boolean
+  onChange: (patch: Partial<HeroPhoto>) => void
+  onPick: (file: File) => void
+  onUndo: () => void
+  onImage: (url: string) => void
+}) {
+  const drag = useRef<{ x: number; y: number; fx: number; fy: number; w: number; h: number } | null>(null)
+  const clamp = (value: number) => Math.min(100, Math.max(0, value))
+
+  return (
+    <div
+      className={
+        photo.image
+          ? 'group/photo absolute inset-0 cursor-move touch-none'
+          : 'absolute inset-0 flex items-center justify-center'
+      }
+      title={photo.image ? 'Drag to reframe the photo' : undefined}
+      onPointerDown={(event) => {
+        if (!photo.image || event.button !== 0 || event.target !== event.currentTarget) return
+        const box = event.currentTarget.getBoundingClientRect()
+        drag.current = { x: event.clientX, y: event.clientY, fx: photo.focusX, fy: photo.focusY, w: box.width, h: box.height }
+        event.currentTarget.setPointerCapture(event.pointerId)
+      }}
+      onPointerMove={(event) => {
+        const start = drag.current
+        if (!start) return
+        // Dragging the picture right reveals more of its left side.
+        const k = 100 / (photo.zoom / 100)
+        onChange({
+          focusX: Math.round(clamp(start.fx - ((event.clientX - start.x) / start.w) * k)),
+          focusY: Math.round(clamp(start.fy - ((event.clientY - start.y) / start.h) * k)),
+        })
+      }}
+      onPointerUp={() => {
+        drag.current = null
+      }}
+      onPointerCancel={() => {
+        drag.current = null
+      }}
+    >
+      {photo.image && (
+        <span className="pointer-events-none absolute left-3 top-3 inline-flex items-center gap-1 rounded-full bg-navy/75 px-2 py-0.5 font-sans text-[11px] text-white opacity-0 transition-opacity group-hover/photo:opacity-100">
+          <Move className="size-3" />
+          Drag to reframe
+        </span>
+      )}
+      <div
+        className={
+          photo.image
+            ? 'absolute inset-x-2 bottom-2 flex flex-wrap items-center justify-end gap-1.5'
+            : 'flex flex-col items-center gap-1.5 p-2 text-center'
+        }
+      >
+        <ImagePicker label="photo" hasPending={hasPending} image={photo.image} onPick={onPick} onUndo={onUndo} />
+        <SettingsPopover
+          title="Photo"
+          triggerLabel="Photo settings"
+          trigger={
+            <span className={heroChip}>
+              <SlidersHorizontal className="size-3.5" />
+            </span>
+          }
+        >
+          <RangeField label="Size (tablet & desktop)" value={photo.width} min={160} max={440} step={4} unit="px" onChange={(width) => onChange({ width })} />
+          <Segmented
+            label="Side"
+            value={photo.side}
+            options={[
+              { value: 'left', label: 'Left of name' },
+              { value: 'right', label: 'Right of name' },
+            ]}
+            onChange={(side) => onChange({ side })}
+          />
+          <Segmented
+            label="Vertical position"
+            value={photo.align}
+            options={[
+              { value: 'top', label: 'Top' },
+              { value: 'center', label: 'Middle' },
+              { value: 'bottom', label: 'Bottom' },
+            ]}
+            onChange={(align) => onChange({ align })}
+          />
+          <Segmented
+            label="Shape"
+            value={photo.shape}
+            options={[
+              { value: 'portrait', label: 'Portrait' },
+              { value: 'square', label: 'Square' },
+              { value: 'circle', label: 'Circle' },
+            ]}
+            onChange={(shape) => onChange({ shape })}
+          />
+          <RangeField label="Zoom" value={photo.zoom} min={100} max={300} step={5} unit="%" onChange={(zoom) => onChange({ zoom })} />
+          <RangeField label="Framing — horizontal" value={photo.focusX} min={0} max={100} unit="%" onChange={(focusX) => onChange({ focusX })} />
+          <RangeField label="Framing — vertical" value={photo.focusY} min={0} max={100} unit="%" onChange={(focusY) => onChange({ focusY })} />
+          <ImageAddressField
+            image={photo.image}
+            onImage={onImage}
+            hint="A path on this site (e.g. /profile/toribio-iriarte.jpg) or an https:// address."
+          />
+          <div className="flex flex-wrap gap-2 border-t border-border pt-3">
+            <button
+              type="button"
+              onClick={() => onChange({ focusX: 50, focusY: 50, zoom: 100 })}
+              className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-navy hover:bg-secondary"
+            >
+              <RotateCcw className="size-3" />
+              Reset framing
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onUndo()
+                onChange(defaultHeroPhoto)
+              }}
+              className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-navy hover:bg-secondary"
+            >
+              Restore default
+            </button>
+            {photo.image && (
+              <button
+                type="button"
+                onClick={() => onImage('')}
+                className="inline-flex items-center gap-1 rounded-full border border-destructive/30 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/5"
+              >
+                <Trash2 className="size-3" />
+                Remove photo
+              </button>
+            )}
+          </div>
+        </SettingsPopover>
+      </div>
+    </div>
+  )
+}
+
+// Bottom-left of the hero: replace the background and open its settings.
+function HeroBackgroundControl({
+  background,
+  hasPending,
+  onChange,
+  onPick,
+  onUndo,
+  onImage,
+}: {
+  background: HeroBackground
+  hasPending: boolean
+  onChange: (patch: Partial<HeroBackground>) => void
+  onPick: (file: File) => void
+  onUndo: () => void
+  onImage: (url: string) => void
+}) {
+  return (
+    <div className="absolute bottom-4 left-4 z-10 flex flex-wrap items-center gap-1.5 sm:left-8">
+      <span className="rounded-full bg-navy/75 px-2 py-0.5 font-sans text-[11px] font-medium text-white">Background</span>
+      <ImagePicker
+        label="background"
+        hasPending={hasPending}
+        image={background.image}
+        onPick={onPick}
+        onUndo={onUndo}
+      />
+      <SettingsPopover
+        title="Background"
+        triggerLabel="Background settings"
+        trigger={
+          <span className={heroChip}>
+            <SlidersHorizontal className="size-3.5" />
+          </span>
+        }
+      >
+        <RangeField label="Opacity" value={background.opacity} min={0} max={100} unit="%" onChange={(opacity) => onChange({ opacity })} />
+        <RangeField label="Size" value={background.zoom} min={40} max={300} step={5} unit="%" onChange={(zoom) => onChange({ zoom })} />
+        <RangeField label="Position — horizontal" value={background.positionX} min={0} max={100} unit="%" onChange={(positionX) => onChange({ positionX })} />
+        <RangeField label="Position — vertical" value={background.positionY} min={0} max={100} unit="%" onChange={(positionY) => onChange({ positionY })} />
+        <label className="flex items-start gap-2 text-xs text-navy">
+          <input
+            type="checkbox"
+            checked={background.fade}
+            onChange={(event) => onChange({ fade: event.target.checked })}
+            className="mt-0.5 accent-[var(--steel)]"
+          />
+          <span>
+            <span className="font-medium">Fade out behind the text</span>
+            <span className="block text-muted-foreground">Shows the image only along the bottom of the hero.</span>
+          </span>
+        </label>
+        <ImageAddressField
+          image={background.image}
+          onImage={onImage}
+          hint="A path on this site (e.g. /hero/term-structure.svg) or an https:// address."
+        />
+        <div className="flex flex-wrap gap-2 border-t border-border pt-3">
+          <button
+            type="button"
+            onClick={() => {
+              onUndo()
+              onChange(defaultHeroBackground)
+            }}
+            className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-navy hover:bg-secondary"
+          >
+            <RotateCcw className="size-3" />
+            Restore default
+          </button>
+          {background.image && (
+            <button
+              type="button"
+              onClick={() => onImage('')}
+              className="inline-flex items-center gap-1 rounded-full border border-destructive/30 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/5"
+            >
+              <Trash2 className="size-3" />
+              Remove background
+            </button>
+          )}
+        </div>
+      </SettingsPopover>
     </div>
   )
 }

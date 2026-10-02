@@ -232,12 +232,26 @@ export async function saveHomeContentAction(content: HomeContent): Promise<SaveR
   // Newly uploaded images must exist in storage; images already saved
   // before are left alone (no need to re-check them on every save).
   const current = await getHomeContent()
-  const previousImages = new Set(current.research.sections.map((s) => s.image))
+  const previousImages = new Set([
+    ...current.research.sections.map((s) => s.image),
+    current.hero.photo.image,
+    current.hero.background.image,
+  ])
   for (const section of parsed.data.research.sections) {
     if (section.image.startsWith("/api/files/") && !previousImages.has(section.image)) {
       const key = decodeURIComponent(section.image.slice("/api/files/".length))
       const problem = await checkUpload(key, "image", `Research card ${quoted(section.title, "")}`)
       if (problem) return { ok: false, error: problem, clientKey: section.id }
+    }
+  }
+  for (const [image, label] of [
+    [parsed.data.hero.photo.image, "Hero photo"],
+    [parsed.data.hero.background.image, "Hero background"],
+  ] as const) {
+    if (image.startsWith("/api/files/") && !previousImages.has(image)) {
+      const key = decodeURIComponent(image.slice("/api/files/".length))
+      const problem = await checkUpload(key, "image", label)
+      if (problem) return { ok: false, error: problem }
     }
   }
 

@@ -1,8 +1,10 @@
+import type { ComponentType, ReactNode } from 'react'
 import type { Metadata } from 'next'
-import { Mail, Phone, MapPin, ArrowUpRight } from 'lucide-react'
-import { LinkedInIcon } from '@/components/social-links'
+import { Mail, Phone, MapPin, ArrowUpRight, Check, Copy } from 'lucide-react'
+import { LinkedInIcon, WhatsAppIcon } from '@/components/social-links'
+import { CopyButton } from '@/components/copy-button'
 import { PageHeader } from '@/components/page-header'
-import { profile } from '@/lib/content'
+import { profile, whatsappUrl } from '@/lib/content'
 
 export const metadata: Metadata = {
   title: 'Contact',
@@ -10,18 +12,35 @@ export const metadata: Metadata = {
     'Get in touch with Toribio Iriarte — email, phone, and LinkedIn.',
 }
 
-const channels = [
+// Email and phone copy to the clipboard (no mailto:/tel:); WhatsApp and
+// LinkedIn open in a new tab; location is plain text.
+type Channel = {
+  icon: ComponentType<{ className?: string }>
+  label: string
+  value: string
+  // Set for values copied on click (the accessible "what": "email address").
+  copy?: string
+  href?: string
+}
+
+const channels: Channel[] = [
   {
     icon: Mail,
     label: 'Email',
     value: profile.email,
-    href: `mailto:${profile.email}`,
+    copy: 'email address',
   },
   {
     icon: Phone,
     label: 'Phone',
     value: profile.phone,
-    href: `tel:${profile.phone.replace(/\s/g, '')}`,
+    copy: 'phone number',
+  },
+  {
+    icon: WhatsAppIcon,
+    label: 'WhatsApp',
+    value: 'Start a conversation',
+    href: whatsappUrl,
   },
   {
     icon: LinkedInIcon,
@@ -33,7 +52,6 @@ const channels = [
     icon: MapPin,
     label: 'Location',
     value: profile.location,
-    href: undefined,
   },
 ]
 
@@ -50,39 +68,49 @@ export default function ContactPage() {
         <div className="grid gap-4 sm:grid-cols-2">
           {channels.map((c) => {
             const Icon = c.icon
-            const inner = (
+            const inner = (trailing?: ReactNode) => (
               <>
-                <span className="flex size-11 items-center justify-center rounded-full bg-secondary text-navy">
+                <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-secondary text-navy">
                   <Icon className="size-5" />
                 </span>
-                <div className="min-w-0">
+                <div className="min-w-0 text-left">
                   <p className="text-xs uppercase tracking-wider text-muted-foreground">
                     {c.label}
                   </p>
                   <p className="mt-0.5 truncate text-base text-navy">{c.value}</p>
                 </div>
-                {c.href && (
-                  <ArrowUpRight className="ml-auto size-5 text-muted-foreground transition-colors group-hover:text-navy" />
-                )}
+                {trailing}
               </>
             )
 
             const className =
-              'group flex items-center gap-4 rounded-2xl bg-white p-6 shadow-sm shadow-navy/5 transition-colors hover:shadow-md hover:shadow-navy/10'
+              'group flex w-full items-center gap-4 rounded-2xl bg-white p-6 shadow-sm shadow-navy/5 transition-colors hover:shadow-md hover:shadow-navy/10'
+            const trailingIcon = 'ml-auto size-5 shrink-0 text-muted-foreground transition-colors group-hover:text-navy'
 
-            return c.href ? (
-              <a
-                key={c.label}
-                href={c.href}
-                target={c.href.startsWith('http') ? '_blank' : undefined}
-                rel={c.href.startsWith('http') ? 'noopener noreferrer' : undefined}
-                className={className}
-              >
-                {inner}
-              </a>
-            ) : (
+            if (c.copy) {
+              return (
+                <CopyButton
+                  key={c.label}
+                  value={c.value}
+                  label={c.copy}
+                  className={className}
+                  wrapperClassName="w-full"
+                  copiedChildren={inner(<Check className={`${trailingIcon} text-emerald-600 group-hover:text-emerald-600`} />)}
+                >
+                  {inner(<Copy className={trailingIcon} />)}
+                </CopyButton>
+              )
+            }
+            if (c.href) {
+              return (
+                <a key={c.label} href={c.href} target="_blank" rel="noopener noreferrer" className={className}>
+                  {inner(<ArrowUpRight className={trailingIcon} />)}
+                </a>
+              )
+            }
+            return (
               <div key={c.label} className={className}>
-                {inner}
+                {inner()}
               </div>
             )
           })}
@@ -93,13 +121,22 @@ export default function ContactPage() {
             {profile.fullName}
           </h2>
           <p className="mt-3 max-w-xl text-white/70">{profile.tagline}</p>
-          <a
-            href={`mailto:${profile.email}`}
-            className="mt-8 inline-flex items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-medium text-navy transition-transform hover:-translate-y-0.5"
-          >
-            <Mail className="size-4" />
-            Send an email
-          </a>
+          <div className="mt-8">
+            <CopyButton
+              value={profile.email}
+              label="email address"
+              className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-medium text-navy transition-transform hover:-translate-y-0.5"
+              copiedChildren={
+                <>
+                  <Check className="size-4 text-emerald-600" />
+                  Email address copied
+                </>
+              }
+            >
+              <Mail className="size-4" />
+              {profile.email}
+            </CopyButton>
+          </div>
         </div>
       </div>
     </main>

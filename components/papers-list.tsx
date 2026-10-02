@@ -2,9 +2,11 @@
 
 import { useState, type ReactNode } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { EditableSelect, EditableTags, EditableText } from '@/components/admin/editable'
 import { GithubIcon } from '@/components/social-links'
+import { categoryParam } from '@/lib/content'
 import type { PublicPaper } from '@/lib/public-content'
 
 const typeStyles: Record<string, string> = {
@@ -204,14 +206,23 @@ export function PaperFilters({
 export function PapersList({
   papers,
   categories,
+  initialFilter = 'All',
+  onFilterChange,
 }: {
   papers: PublicPaper[]
   categories: string[]
+  initialFilter?: string
+  onFilterChange?: (filter: string) => void
 }) {
-  const [filter, setFilter] = useState('All')
+  const [filter, setFilter] = useState(initialFilter)
 
   const visible =
     filter === 'All' ? papers : papers.filter((p) => p.category === filter)
+
+  const changeFilter = (next: string) => {
+    setFilter(next)
+    onFilterChange?.(next)
+  }
 
   if (papers.length === 0) {
     return (
@@ -226,7 +237,7 @@ export function PapersList({
 
   return (
     <div className="mx-auto max-w-6xl px-5 py-12 sm:px-8 md:py-16">
-      <PaperFilters papers={papers} categories={categories} filter={filter} onFilter={setFilter} />
+      <PaperFilters papers={papers} categories={categories} filter={filter} onFilter={changeFilter} />
 
       <div className="mt-8 space-y-10">
         {visible.map((paper) => (
@@ -234,5 +245,38 @@ export function PapersList({
         ))}
       </div>
     </div>
+  )
+}
+
+// /papers with the filter kept in the URL (?category=commodity-research), so
+// a filtered view can be linked to — Home's Research Focus cards do — shared
+// and bookmarked. Choosing a filter updates the address in place (no new
+// history entry). Needs a <Suspense> boundary (useSearchParams); app/papers
+// renders the plain, unfiltered PapersList as its fallback.
+export function PapersListWithUrlFilter({
+  papers,
+  categories,
+}: {
+  papers: PublicPaper[]
+  categories: string[]
+}) {
+  const param = useSearchParams().get('category')
+  const initialFilter = categories.find((category) => categoryParam(category) === param) ?? 'All'
+
+  return (
+    <PapersList
+      // Re-read the URL if it changes from outside (e.g. following another
+      // filtered link while already on /papers).
+      key={initialFilter}
+      papers={papers}
+      categories={categories}
+      initialFilter={initialFilter}
+      onFilterChange={(next) => {
+        const url = new URL(window.location.href)
+        if (next === 'All') url.searchParams.delete('category')
+        else url.searchParams.set('category', categoryParam(next))
+        window.history.replaceState(null, '', url)
+      }}
+    />
   )
 }

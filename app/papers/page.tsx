@@ -1,6 +1,7 @@
+import { Suspense } from 'react'
 import type { Metadata } from 'next'
 import { PageHeader } from '@/components/page-header'
-import { PapersList } from '@/components/papers-list'
+import { PapersList, PapersListWithUrlFilter } from '@/components/papers-list'
 import { paperCategories, getPublishedPapers } from '@/lib/queries'
 import { getListPageContent } from '@/lib/site-content'
 
@@ -41,7 +42,13 @@ export default async function PapersPage() {
         </p>
       ) : (
         <>
-          <PapersList papers={papers} categories={[...paperCategories]} />
+          {/* The filter lives in the URL (?category=…). The fallback — the
+              full, unfiltered list — is what the static page ships, so
+              every paper is in the HTML; the URL's filter applies once the
+              page loads in the browser. */}
+          <Suspense fallback={<PapersList papers={papers} categories={[...paperCategories]} />}>
+            <PapersListWithUrlFilter papers={papers} categories={[...paperCategories]} />
+          </Suspense>
           <script
             type="application/ld+json"
             dangerouslySetInnerHTML={{

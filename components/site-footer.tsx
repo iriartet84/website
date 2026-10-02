@@ -1,7 +1,8 @@
 import Link from 'next/link'
-import { Mail, Phone } from 'lucide-react'
-import { profile } from '@/lib/content'
-import { LinkedInIcon } from '@/components/social-links'
+import { Check, Mail, Phone } from 'lucide-react'
+import { profile, whatsappUrl } from '@/lib/content'
+import { CopyButton } from '@/components/copy-button'
+import { LinkedInIcon, WhatsAppIcon } from '@/components/social-links'
 
 const links = [
   { href: '/projects', label: 'Projects' },
@@ -41,13 +42,40 @@ export function SiteFooter() {
             <LinkedInIcon className="size-3.5 shrink-0" />
             {profile.linkedin}
           </a>
-          <a href={`mailto:${profile.email}`} className={contactLinkClass}>
+          {/* Email and phone copy to the clipboard rather than opening a
+              mail client or dialler; WhatsApp is the "start a conversation"
+              action for the number. */}
+          <CopyButton
+            value={profile.email}
+            label="email address"
+            className={contactLinkClass}
+            copiedChildren={
+              <>
+                <Check className="size-3.5 shrink-0 text-emerald-600" />
+                {profile.email}
+              </>
+            }
+          >
             <Mail className="size-3.5 shrink-0" />
             {profile.email}
-          </a>
-          <a href={`tel:${profile.phone.replace(/[^+0-9]/g, '')}`} className={contactLinkClass}>
+          </CopyButton>
+          <CopyButton
+            value={profile.phone}
+            label="phone number"
+            className={contactLinkClass}
+            copiedChildren={
+              <>
+                <Check className="size-3.5 shrink-0 text-emerald-600" />
+                {profile.phone}
+              </>
+            }
+          >
             <Phone className="size-3.5 shrink-0" />
             {profile.phone}
+          </CopyButton>
+          <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className={contactLinkClass}>
+            <WhatsAppIcon className="size-3.5 shrink-0" />
+            Message on WhatsApp
           </a>
         </div>
       </div>

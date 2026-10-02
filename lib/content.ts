@@ -13,6 +13,11 @@ export const profile = {
   location: 'Barcelona, Spain',
 }
 
+// WhatsApp "click to chat" link for profile.phone: wa.me takes the number in
+// international format, digits only (no +, spaces or dashes). Opens the app
+// on mobile and WhatsApp Web / Desktop elsewhere.
+export const whatsappUrl = `https://wa.me/${profile.phone.replace(/\D/g, '')}`
+
 export type ResearchSection = {
   id: string
   index: string
@@ -121,6 +126,27 @@ export const paperCategories = [
 ] as const
 
 export type PaperCategory = (typeof paperCategories)[number]
+
+// URL form of a paper category, for shareable filtered links:
+// "Commodity Research" -> /papers?category=commodity-research
+export function categoryParam(category: string) {
+  return category
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
+// The Papers & Briefs category a Home "Research Focus" card points to: its
+// label or title when that names a category ("Macroeconomics"), otherwise
+// its id when that starts one ("commodity" -> "Commodity Research"). Null
+// when nothing matches — the card then links to all papers.
+export function paperCategoryForSection(section: { id: string; label: string; title: string }) {
+  const candidates = [section.label, section.title].map(categoryParam)
+  const byName = paperCategories.find((category) => candidates.includes(categoryParam(category)))
+  if (byName) return byName
+  const id = categoryParam(section.id)
+  return paperCategories.find((category) => id && categoryParam(category).startsWith(id)) ?? null
+}
 
 export type Paper = {
   title: string

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
-import { Download, Mail, Plus, X } from 'lucide-react'
+import { Check, Download, Mail, Plus, X } from 'lucide-react'
 import { LinkedInIcon, GithubIcon } from '@/components/social-links'
+import { CopyButton } from '@/components/copy-button'
 import { profile } from '@/lib/content'
 import { PageHeader } from '@/components/page-header'
 import { EditableBullets, EditableTags, EditableText } from '@/components/admin/editable'
@@ -171,13 +172,23 @@ export function CvView({
             </>
           ) : (
             <>
-              <a
-                href={`mailto:${cv.email}`}
-                className="inline-flex items-center gap-1.5 text-navy hover:opacity-70"
+              {/* Copies rather than opening a mail client. Typography is set
+                  explicitly to match the neighbouring CV links (a <button>
+                  doesn't otherwise pick up the surrounding text style). */}
+              <CopyButton
+                value={cv.email}
+                label="email address"
+                className="inline-flex items-center gap-1.5 font-sans text-sm font-normal text-navy hover:opacity-70"
+                copiedChildren={
+                  <>
+                    <Check className="size-4 text-emerald-600" />
+                    {cv.email}
+                  </>
+                }
               >
                 <Mail className="size-4" />
                 {cv.email}
-              </a>
+              </CopyButton>
               <a
                 href={cv.linkedinUrl}
                 target="_blank"

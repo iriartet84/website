@@ -53,6 +53,59 @@ export const homeSkillSchema = z.object({
   tags: tagsSchema,
 })
 
+const percent = z.number().min(0).max(100)
+
+// The portrait beside the name on Home. An empty image hides it.
+export const heroPhotoSchema = z.object({
+  image: imageSchema,
+  // Width on tablet/desktop, in px (phones use a fixed small size).
+  width: z.number().int().min(160).max(440),
+  side: z.enum(["right", "left"]),
+  align: z.enum(["top", "center", "bottom"]),
+  shape: z.enum(["portrait", "square", "circle"]),
+  // Framing inside the frame: the focal point (CSS object-position, in %)
+  // and a zoom around it (100 = fill the frame exactly).
+  focusX: percent,
+  focusY: percent,
+  zoom: z.number().min(100).max(300),
+})
+
+// The hero's background image. An empty image means a plain background.
+export const heroBackgroundSchema = z.object({
+  image: imageSchema,
+  opacity: percent,
+  // 100 = cover the hero; smaller shrinks it, larger zooms in — around
+  // the position point.
+  zoom: z.number().min(40).max(300),
+  positionX: percent,
+  positionY: percent,
+  // Fade it out upwards so the name and tagline sit on plain background.
+  fade: z.boolean(),
+})
+
+export type HeroPhoto = z.infer<typeof heroPhotoSchema>
+export type HeroBackground = z.infer<typeof heroBackgroundSchema>
+
+export const defaultHeroPhoto: HeroPhoto = {
+  image: "/profile/toribio-iriarte.jpg",
+  width: 320,
+  side: "right",
+  align: "center",
+  shape: "portrait",
+  focusX: 50,
+  focusY: 50,
+  zoom: 100,
+}
+
+export const defaultHeroBackground: HeroBackground = {
+  image: "/hero/term-structure.svg",
+  opacity: 70,
+  zoom: 100,
+  positionX: 50,
+  positionY: 100,
+  fade: true,
+}
+
 export const homeContentSchema = z.object({
   hero: z.object({
     eyebrow: shortText("Hero eyebrow", 60),
@@ -61,6 +114,9 @@ export const homeContentSchema = z.object({
     tagline: longText("Hero tagline", 600),
     primaryCta: shortText("Primary button label", 40),
     secondaryCta: shortText("Secondary button label", 40),
+    // Defaulted so rows saved before these settings existed still parse.
+    photo: heroPhotoSchema.default(defaultHeroPhoto),
+    background: heroBackgroundSchema.default(defaultHeroBackground),
   }),
   research: z.object({
     eyebrow: shortText("Research eyebrow", 60),
@@ -101,6 +157,8 @@ export const defaultHomeContent: HomeContent = {
     tagline: profile.tagline,
     primaryCta: "View projects",
     secondaryCta: "Papers & briefs",
+    photo: defaultHeroPhoto,
+    background: defaultHeroBackground,
   },
   research: {
     eyebrow: "Research Focus",

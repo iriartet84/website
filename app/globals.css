@@ -244,6 +244,30 @@
   animation-fill-mode: forwards;
 }
 
+/* Home hero (components/hero.tsx): with "fade" on, the background shows
+   only along the bottom of the hero and fades out upwards, so the name and
+   tagline sit on plain background. Phones stack the copy lower, so their
+   band is narrower. */
+.hero-background-fade {
+  -webkit-mask-image: linear-gradient(to top, black 0%, black 8%, transparent 24%);
+  mask-image: linear-gradient(to top, black 0%, black 8%, transparent 24%);
+}
+@media (min-width: 768px) {
+  .hero-background-fade {
+    -webkit-mask-image: linear-gradient(to top, black 0%, black 18%, transparent 46%);
+    mask-image: linear-gradient(to top, black 0%, black 18%, transparent 46%);
+  }
+}
+
+/* Horizontal scrollers that keep native scrolling (trackpad, touch) but
+   hide the scrollbar — e.g. the Research Focus carousel. */
+.scrollbar-none {
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
 /* LaTeX papers rendered as articles (components/latex-article-view.tsx,
    from lib/latex-article.ts). */
 @layer components {
