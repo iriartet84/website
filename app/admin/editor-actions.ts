@@ -658,11 +658,26 @@ export async function saveCvPageAction(input: unknown): Promise<SaveResult> {
         "experience.items": (raw.experience?.items ?? []).map(label("Experience", "org")),
         "education.items": (raw.education?.items ?? []).map(label("Education", "school")),
         "languages.items": (raw.languages?.items ?? []).map(label("Language", "name")),
+        ...Object.fromEntries(
+          ((raw as { layout?: { sections?: unknown[] } }).layout?.sections ?? []).map((section, s) => {
+            const sec = section as { title?: unknown; entries?: unknown[] } | null
+            return [
+              `layout.sections.${s}.entries`,
+              (sec?.entries ?? []).map((entry, i) => {
+                const e = entry as Record<string, unknown> | null
+                return {
+                  clientKey: String(e?.id ?? i),
+                  label: `${quoted(String(sec?.title ?? ""), "Section")} entry ${quoted(String(e?.org ?? ""), String(i + 1))}`,
+                }
+              }),
+            ]
+          }),
+        ),
       },
       "CV details",
     )
   }
-  const { profile, cvPdf, experience, education, languages } = parsed.data
+  const { layout, profile, cvPdf, experience, education, languages } = parsed.data
 
   if (cvPdf.kind === "upload") {
     const problem = await checkUpload(cvPdf.key, "pdf", "CV PDF")
@@ -738,6 +753,12 @@ export async function saveCvPageAction(input: unknown): Promise<SaveResult> {
           await tx.insert(educationEntries).values({ ...fields, userId: session.user.id })
         }
       }
+
+      // Section order/titles/visibility + added sections' entries.
+      await tx
+        .insert(siteContent)
+        .values({ key: "cv", value: layout, updatedAt: new Date() })
+        .onConflictDoUpdate({ target: siteContent.key, set: { value: layout, updatedAt: new Date() } })
 
       const langDelete = without(languages.deletedIds, languages.items)
       if (langDelete.length) await tx.delete(languageEntries).where(inArray(languageEntries.id, langDelete))

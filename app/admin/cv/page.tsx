@@ -13,17 +13,19 @@ import {
 } from '@/lib/content'
 import { parseDetails } from '@/lib/validations'
 import { CvEditor, type CvEditorData } from '@/components/admin/cv-editor'
+import { getCvLayout } from '@/lib/site-content'
 
 export const metadata = { title: 'Edit CV' }
 
 // /admin/cv — the public /cv page, editable. See components/admin/cv-editor.tsx.
 export default async function AdminCvPage() {
-  const [cv, adminProfile, experience, education, languages] = await Promise.all([
+  const [cv, adminProfile, experience, education, languages, layout] = await Promise.all([
     getCvProfile(),
     getAdminCvProfile().catch(() => null),
     listAdminExperience().catch(() => null),
     listAdminEducation().catch(() => null),
     listAdminLanguages().catch(() => null),
+    getCvLayout(),
   ])
 
   const data: CvEditorData = {
@@ -69,6 +71,7 @@ export default async function AdminCvPage() {
       level: row.level,
       published: row.published,
     })),
+    layout,
     // Shown publicly while a section has no published entries.
     defaults: {
       experience: staticExperience,

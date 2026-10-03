@@ -47,7 +47,8 @@ export function ItemToolbar({
   direction?: 'vertical' | 'horizontal'
   published?: boolean
   onTogglePublished?: () => void
-  onRemove: () => void
+  // Omitted for items that can't be deleted (e.g. the built-in CV sections).
+  onRemove?: () => void
   settings?: ReactNode
   className?: string
   itemLabel: string
@@ -80,15 +81,17 @@ export function ItemToolbar({
         </button>
       )}
       {settings}
-      <button
-        type="button"
-        className={cn(toolButton, 'hover:bg-destructive/10 hover:text-destructive')}
-        onClick={onRemove}
-        title={`Delete ${itemLabel}`}
-        aria-label={`Delete ${itemLabel}`}
-      >
-        <Trash2 className="size-3.5" />
-      </button>
+      {onRemove && (
+        <button
+          type="button"
+          className={cn(toolButton, 'hover:bg-destructive/10 hover:text-destructive')}
+          onClick={onRemove}
+          title={`Delete ${itemLabel}`}
+          aria-label={`Delete ${itemLabel}`}
+        >
+          <Trash2 className="size-3.5" />
+        </button>
+      )}
     </div>
   )
 }

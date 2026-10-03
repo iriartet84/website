@@ -143,6 +143,98 @@ export type HomeResearchSection = z.infer<typeof homeResearchSectionSchema>
 export type HomeSkill = z.infer<typeof homeSkillSchema>
 export type HomeContent = z.infer<typeof homeContentSchema>
 
+// ---- CV layout -----------------------------------------------------------
+// The CV page's sections: their order, titles and visibility. Four are
+// built in, with their entries in their own tables (education, experience,
+// skills on the CV profile, languages); any number of "entries" sections
+// can be added, whose entries (experience-style: organisation, role,
+// location, period, summary, bullet points) are stored right here — e.g.
+// "Presentations & Research". Stored under the "cv" key in site_content.
+
+export const cvBuiltInSections = ["education", "experience", "skills", "languages"] as const
+export type CvBuiltInSection = (typeof cvBuiltInSections)[number]
+
+export const cvEntrySchema = z.object({
+  id: z.string().min(1).max(80),
+  org: z.string().trim().min(2, "Organisation needs at least 2 characters").max(150),
+  role: z.string().trim().min(2, "Title needs at least 2 characters").max(200),
+  location: z.string().trim().max(150),
+  period: z.string().trim().min(2, "Date needs at least 2 characters").max(80),
+  summary: z.string().trim().max(400),
+  details: z.array(z.string().trim().min(1).max(1000)).max(20),
+  published: z.boolean(),
+})
+
+export const cvSectionSchema = z.object({
+  id: z.string().min(1).max(80),
+  kind: z.enum([...cvBuiltInSections, "entries"]),
+  title: shortText("Section title", 80),
+  visible: z.boolean(),
+  entries: z.array(cvEntrySchema).max(50).default([]),
+})
+
+export const cvLayoutSchema = z
+  .object({ sections: z.array(cvSectionSchema).min(1).max(20) })
+  .superRefine((layout, ctx) => {
+    for (const kind of cvBuiltInSections) {
+      if (layout.sections.filter((section) => section.kind === kind).length > 1) {
+        ctx.addIssue({ code: "custom", message: `The ${kind} section appears twice`, path: ["sections"] })
+      }
+    }
+    const ids = layout.sections.map((section) => section.id)
+    if (new Set(ids).size !== ids.length) {
+      ctx.addIssue({ code: "custom", message: "Two sections share an id", path: ["sections"] })
+    }
+  })
+
+export type CvEntry = z.infer<typeof cvEntrySchema>
+export type CvSection = z.infer<typeof cvSectionSchema>
+export type CvLayout = z.infer<typeof cvLayoutSchema>
+
+export const defaultCvLayout: CvLayout = {
+  sections: [
+    { id: "education", kind: "education", title: "Education", visible: true, entries: [] },
+    { id: "experience", kind: "experience", title: "Professional Experience", visible: true, entries: [] },
+    {
+      id: "presentations",
+      kind: "entries",
+      title: "Presentations & Research",
+      visible: true,
+      entries: [
+        {
+          id: "lse-presentation",
+          org: "London School of Economics",
+          role: "Research Presentation",
+          location: "London, UK",
+          period: "2025",
+          summary: "Oil, Institutions & Growth in Developing Countries — CIVICA–LSE research exchange",
+          details: [
+            "Presented thesis research on how oil endowments condition institutional quality and long-run growth in developing countries.",
+            "Two-stage least squares in R, instrumenting oil with a 10-year lag within an augmented Solow framework.",
+          ],
+          published: true,
+        },
+        {
+          id: "european-commission-policy-proposal",
+          org: "European Commission",
+          role: "Policy Proposal",
+          location: "Brussels, Belgium",
+          period: "11/2024",
+          summary: "Designed agricultural reform for water stress in Cyprus",
+          details: [
+            "Designed incentive-compatible economic mechanisms — tiered pricing, elasticity-based incentives, behavioural nudges — to encourage crop diversification.",
+            "Quantified outcomes (20% evaporation reduction through destratification, 33.5% via monomolecular films) and presented the pilot to European Commission and Cyprus representatives.",
+            "Collaborated with an international team to design and pitch feasible agricultural investment.",
+          ],
+          published: true,
+        },
+      ],
+    },
+    { id: "skills", kind: "skills", title: "Technical Skills", visible: true, entries: [] },
+    { id: "languages", kind: "languages", title: "Languages", visible: true, entries: [] },
+  ],
+}
+
 export type ListPageKey = "papers" | "projects"
 export const listPageContentSchema = z.object({ header: pageHeaderSchema })
 export type ListPageContent = z.infer<typeof listPageContentSchema>

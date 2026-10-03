@@ -7,6 +7,7 @@ import {
   stackListSchema,
   updateFrequencies,
 } from "@/lib/project-meta"
+import { cvLayoutSchema } from "@/lib/site-content-shared"
 
 // Ceiling for a PDF that has to pass through a Server Action (the fallback
 // upload path used when no S3-compatible bucket is configured — see
@@ -343,6 +344,7 @@ export const projectsPagePayloadSchema = z.object({
 })
 
 export const cvPagePayloadSchema = z.object({
+  layout: cvLayoutSchema,
   profile: cvProfileEditorSchema,
   cvPdf: cvPdfChangeSchema,
   experience: z.object({ items: z.array(experienceItemSchema).max(100), deletedIds: deletedIdsSchema }),

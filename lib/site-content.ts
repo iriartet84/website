@@ -2,10 +2,13 @@ import { eq } from "drizzle-orm"
 import { db } from "@/lib/db"
 import { siteContent } from "@/lib/db/schema"
 import {
+  cvLayoutSchema,
+  defaultCvLayout,
   defaultHomeContent,
   defaultListPageContent,
   homeContentSchema,
   listPageContentSchema,
+  type CvLayout,
   type HomeContent,
   type ListPageContent,
   type ListPageKey,
@@ -40,4 +43,18 @@ export async function getListPageContent(page: ListPageKey): Promise<ListPageCon
   const value = await readValue(page)
   const parsed = listPageContentSchema.safeParse(value)
   return parsed.success ? parsed.data : defaultListPageContent[page]
+}
+
+// The CV page's section order, titles and visibility, plus the entries of
+// added sections (see cvLayoutSchema). Built-in sections missing from a
+// saved layout are appended, so a newly built-in section always shows up.
+export async function getCvLayout(): Promise<CvLayout> {
+  const value = await readValue("cv")
+  const parsed = cvLayoutSchema.safeParse(value)
+  if (!parsed.success) return defaultCvLayout
+  const sections = [...parsed.data.sections]
+  for (const builtIn of defaultCvLayout.sections) {
+    if (builtIn.kind !== "entries" && !sections.some((section) => section.kind === builtIn.kind)) sections.push(builtIn)
+  }
+  return { sections }
 }

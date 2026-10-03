@@ -5,6 +5,7 @@ import { CopyButton } from '@/components/copy-button'
 import { profile } from '@/lib/content'
 import { PageHeader } from '@/components/page-header'
 import { EditableBullets, EditableTags, EditableText } from '@/components/admin/editable'
+import type { CvBuiltInSection, CvEntry, CvLayout, CvSection } from '@/lib/site-content-shared'
 import type {
   PublicCvProfile,
   PublicEducation,
@@ -39,13 +40,48 @@ export type CvViewEdit = {
   education: CvListEdit<PublicEducation>
   experience: CvListEdit<PublicExperience>
   languages: CvListEdit<PublicLanguage>
+  // Section order/titles/visibility, and the entries of added sections.
+  sections: {
+    onTitleChange: (id: string, title: string) => void
+    toolbar: (section: CvSection, index: number) => ReactNode
+    entries: (section: CvSection) => CvListEdit<CvEntry>
+    after: ReactNode
+  }
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({
+  id,
+  title,
+  hidden = false,
+  toolbar,
+  children,
+}: {
+  id: string
+  title: ReactNode
+  // Only the editor shows hidden sections (faded, with a badge).
+  hidden?: boolean
+  toolbar?: ReactNode
+  children: ReactNode
+}) {
   return (
-    <section className="grid gap-8 border-t border-border py-12 md:grid-cols-[220px_1fr] md:py-16">
-      <h2 className="font-serif text-2xl tracking-tight text-navy">{title}</h2>
-      <div>{children}</div>
+    <section
+      id={id}
+      className="grid scroll-mt-28 gap-8 border-t border-border py-12 md:grid-cols-[220px_1fr] md:py-16"
+    >
+      <div>
+        {title}
+        {(toolbar || hidden) && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 font-sans">
+            {hidden && (
+              <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-800">
+                Hidden
+              </span>
+            )}
+            {toolbar}
+          </div>
+        )}
+      </div>
+      <div className={hidden ? 'opacity-50' : undefined}>{children}</div>
     </section>
   )
 }
@@ -90,6 +126,7 @@ export function CvView({
   education,
   experience,
   languages,
+  layout,
   edit,
 }: {
   fullName: string
@@ -97,6 +134,7 @@ export function CvView({
   education: PublicEducation[]
   experience: PublicExperience[]
   languages: PublicLanguage[]
+  layout: CvLayout
   edit?: CvViewEdit
 }) {
   const text = (
@@ -120,6 +158,190 @@ export function CvView({
 
   const profileSetter = <K extends keyof ProfileFields>(key: K) =>
     edit ? (value: ProfileFields[K]) => edit.onProfileChange({ [key]: value } as Partial<ProfileFields>) : undefined
+
+  const builtInBodies: Record<CvBuiltInSection, ReactNode> = {
+    education: (
+      <div className="space-y-8">
+        {education.map((e, index) => {
+          const set = edit
+            ? (patch: Partial<PublicEducation>) => edit.education.onItemChange(index, patch)
+            : undefined
+          const entry = (
+            <div key={edit ? undefined : e.school}>
+              <div className="flex flex-wrap items-baseline justify-between gap-x-4">
+                {text(e.school, 'School', set && ((school) => set({ school })), 'text-lg font-medium text-navy', 'h3')}
+                {text(e.period, 'Period', set && ((period) => set({ period })), 'text-sm text-muted-foreground')}
+              </div>
+              {text(e.location, 'Location', set && ((location) => set({ location })), 'mt-0.5 text-sm text-muted-foreground', 'p')}
+              {text(e.degree, 'Degree', set && ((degree) => set({ degree })), 'mt-2 text-sm text-navy', 'p')}
+              <Bullets items={e.details} onChange={set && ((details) => set({ details }))} />
+            </div>
+          )
+          return edit ? <div key={index}>{edit.education.wrapItem(index, entry)}</div> : entry
+        })}
+        {edit?.education.after}
+      </div>
+    ),
+    experience: (
+      <div className="space-y-10">
+        {experience.map((x, index) => {
+          const set = edit
+            ? (patch: Partial<PublicExperience>) => edit.experience.onItemChange(index, patch)
+            : undefined
+          const entry = (
+            <div key={edit ? undefined : `${x.org}-${x.period}`}>
+              <div className="flex flex-wrap items-baseline justify-between gap-x-4">
+                <h3 className="text-lg font-medium text-navy">
+                  {text(x.org, 'Organisation', set && ((org) => set({ org })))}{' '}
+                  <span className="text-muted-foreground">
+                    — {text(x.role, 'Role', set && ((role) => set({ role })))}
+                  </span>
+                </h3>
+                {text(x.period, 'Period', set && ((period) => set({ period })), 'text-sm text-muted-foreground')}
+              </div>
+              <p className="mt-0.5 text-sm italic text-muted-foreground">
+                {text(x.summary, 'Summary', set && ((summary) => set({ summary })))} ·{' '}
+                {text(x.location, 'Location', set && ((location) => set({ location })))}
+              </p>
+              <Bullets items={x.details} onChange={set && ((details) => set({ details }))} />
+            </div>
+          )
+          return edit ? <div key={index}>{edit.experience.wrapItem(index, entry)}</div> : entry
+        })}
+        {edit?.experience.after}
+      </div>
+    ),
+    skills: (
+      <div className="space-y-6">
+        {cv.skillGroups.map((group, index) => {
+          const setGroup = (patch: Partial<SkillGroup>) =>
+            edit?.onProfileChange({
+              skillGroups: cv.skillGroups.map((g, i) => (i === index ? { ...g, ...patch } : g)),
+            })
+          return (
+            <div key={edit ? group.id : group.label} className="group/skillgroup relative">
+              {edit ? (
+                <EditableText
+                  as="p"
+                  value={group.label}
+                  label="Category name"
+                  placeholder="Category name"
+                  autoFocus={group.label === ''}
+                  className="text-sm font-medium text-navy"
+                  onChange={(label) => setGroup({ label })}
+                />
+              ) : (
+                <p className="text-sm font-medium text-navy">{group.label}</p>
+              )}
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {edit ? (
+                  <EditableTags
+                    tags={group.tags}
+                    chipClassName={skillChip}
+                    label="skill"
+                    onChange={(tags) => setGroup({ tags })}
+                  />
+                ) : (
+                  group.tags.map((s) => (
+                    <span key={s} className={skillChip}>
+                      {s}
+                    </span>
+                  ))
+                )}
+              </div>
+              {edit && (
+                <button
+                  type="button"
+                  aria-label={`Remove ${group.label || 'category'}`}
+                  title="Remove category"
+                  onClick={() =>
+                    edit.onProfileChange({ skillGroups: cv.skillGroups.filter((_, i) => i !== index) })
+                  }
+                  className="absolute -right-1 -top-1 hidden size-5 items-center justify-center rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive group-hover/skillgroup:flex"
+                >
+                  <X className="size-3.5" />
+                </button>
+              )}
+            </div>
+          )
+        })}
+        {edit && (
+          <button
+            type="button"
+            onClick={() =>
+              edit.onProfileChange({
+                skillGroups: [
+                  ...cv.skillGroups,
+                  { id: `skill-${Date.now().toString(36)}`, label: '', tags: [] },
+                ],
+              })
+            }
+            className="inline-flex items-center gap-1 rounded-full border border-dashed border-steel/40 px-3 py-1.5 text-xs font-medium text-steel-700 transition-colors hover:border-steel hover:bg-steel/10"
+          >
+            <Plus className="size-3" />
+            Add skill category
+          </button>
+        )}
+      </div>
+    ),
+    languages: (
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+        {languages.map((l, index) => {
+          const set = edit
+            ? (patch: Partial<PublicLanguage>) => edit.languages.onItemChange(index, patch)
+            : undefined
+          const card = (
+            <div
+              key={edit ? undefined : l.name}
+              className={edit ? 'h-full rounded-xl bg-white p-4 shadow-sm shadow-navy/5' : 'rounded-xl bg-white p-4 shadow-sm shadow-navy/5'}
+            >
+              {text(l.name, 'Language', set && ((name) => set({ name })), 'text-sm font-medium text-navy', 'p')}
+              {text(l.level, 'Level', set && ((level) => set({ level })), 'mt-0.5 text-xs text-muted-foreground', 'p')}
+            </div>
+          )
+          return edit ? <div key={index}>{edit.languages.wrapItem(index, card)}</div> : card
+        })}
+        {edit?.languages.after}
+      </div>
+    ),
+  }
+
+  // An added section ("Presentations & Research", …): experience-style
+  // entries stored with the layout (see lib/site-content-shared.ts).
+  const renderEntries = (section: CvSection) => {
+    const entries = edit ? section.entries : section.entries.filter((entry) => entry.published)
+    const list = edit?.sections.entries(section)
+    return (
+      <div className="space-y-10">
+        {entries.map((x, index) => {
+          const set = list ? (patch: Partial<CvEntry>) => list.onItemChange(index, patch) : undefined
+          const entry = (
+            <div key={edit ? undefined : x.id}>
+              <div className="flex flex-wrap items-baseline justify-between gap-x-4">
+                <h3 className="text-lg font-medium text-navy">
+                  {text(x.org, 'Organisation', set && ((org) => set({ org })))}{' '}
+                  <span className="text-muted-foreground">
+                    — {text(x.role, 'Title', set && ((role) => set({ role })))}
+                  </span>
+                </h3>
+                {text(x.period, 'Date', set && ((period) => set({ period })), 'text-sm text-muted-foreground')}
+              </div>
+              {(set || x.summary || x.location) && (
+                <p className="mt-0.5 text-sm italic text-muted-foreground">
+                  {text(x.summary, 'Summary', set && ((summary) => set({ summary })))}
+                  {(set || (x.summary && x.location)) && ' · '}
+                  {text(x.location, 'Location', set && ((location) => set({ location })))}
+                </p>
+              )}
+              <Bullets items={x.details} onChange={set && ((details) => set({ details }))} />
+            </div>
+          )
+          return list ? <div key={x.id}>{list.wrapItem(index, entry)}</div> : entry
+        })}
+        {list?.after}
+      </div>
+    )
+  }
 
   return (
     <main>
@@ -220,153 +442,35 @@ export function CvView({
           )}
         </div>
 
-        <Section title="Education">
-          <div className="space-y-8">
-            {education.map((e, index) => {
-              const set = edit
-                ? (patch: Partial<PublicEducation>) => edit.education.onItemChange(index, patch)
-                : undefined
-              const entry = (
-                <div key={edit ? undefined : e.school}>
-                  <div className="flex flex-wrap items-baseline justify-between gap-x-4">
-                    {text(e.school, 'School', set && ((school) => set({ school })), 'text-lg font-medium text-navy', 'h3')}
-                    {text(e.period, 'Period', set && ((period) => set({ period })), 'text-sm text-muted-foreground')}
-                  </div>
-                  {text(e.location, 'Location', set && ((location) => set({ location })), 'mt-0.5 text-sm text-muted-foreground', 'p')}
-                  {text(e.degree, 'Degree', set && ((degree) => set({ degree })), 'mt-2 text-sm text-navy', 'p')}
-                  <Bullets items={e.details} onChange={set && ((details) => set({ details }))} />
-                </div>
-              )
-              return edit ? <div key={index}>{edit.education.wrapItem(index, entry)}</div> : entry
-            })}
-            {edit?.education.after}
-          </div>
-        </Section>
-
-        <Section title="Professional Experience">
-          <div className="space-y-10">
-            {experience.map((x, index) => {
-              const set = edit
-                ? (patch: Partial<PublicExperience>) => edit.experience.onItemChange(index, patch)
-                : undefined
-              const entry = (
-                <div key={edit ? undefined : `${x.org}-${x.period}`}>
-                  <div className="flex flex-wrap items-baseline justify-between gap-x-4">
-                    <h3 className="text-lg font-medium text-navy">
-                      {text(x.org, 'Organisation', set && ((org) => set({ org })))}{' '}
-                      <span className="text-muted-foreground">
-                        — {text(x.role, 'Role', set && ((role) => set({ role })))}
-                      </span>
-                    </h3>
-                    {text(x.period, 'Period', set && ((period) => set({ period })), 'text-sm text-muted-foreground')}
-                  </div>
-                  <p className="mt-0.5 text-sm italic text-muted-foreground">
-                    {text(x.summary, 'Summary', set && ((summary) => set({ summary })))} ·{' '}
-                    {text(x.location, 'Location', set && ((location) => set({ location })))}
-                  </p>
-                  <Bullets items={x.details} onChange={set && ((details) => set({ details }))} />
-                </div>
-              )
-              return edit ? <div key={index}>{edit.experience.wrapItem(index, entry)}</div> : entry
-            })}
-            {edit?.experience.after}
-          </div>
-        </Section>
-
-        <Section title="Technical Skills">
-          <div className="space-y-6">
-            {cv.skillGroups.map((group, index) => {
-              const setGroup = (patch: Partial<SkillGroup>) =>
-                edit?.onProfileChange({
-                  skillGroups: cv.skillGroups.map((g, i) => (i === index ? { ...g, ...patch } : g)),
-                })
-              return (
-                <div key={edit ? group.id : group.label} className="group/skillgroup relative">
-                  {edit ? (
-                    <EditableText
-                      as="p"
-                      value={group.label}
-                      label="Category name"
-                      placeholder="Category name"
-                      autoFocus={group.label === ''}
-                      className="text-sm font-medium text-navy"
-                      onChange={(label) => setGroup({ label })}
-                    />
-                  ) : (
-                    <p className="text-sm font-medium text-navy">{group.label}</p>
-                  )}
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    {edit ? (
-                      <EditableTags
-                        tags={group.tags}
-                        chipClassName={skillChip}
-                        label="skill"
-                        onChange={(tags) => setGroup({ tags })}
-                      />
-                    ) : (
-                      group.tags.map((s) => (
-                        <span key={s} className={skillChip}>
-                          {s}
-                        </span>
-                      ))
-                    )}
-                  </div>
-                  {edit && (
-                    <button
-                      type="button"
-                      aria-label={`Remove ${group.label || 'category'}`}
-                      title="Remove category"
-                      onClick={() =>
-                        edit.onProfileChange({ skillGroups: cv.skillGroups.filter((_, i) => i !== index) })
-                      }
-                      className="absolute -right-1 -top-1 hidden size-5 items-center justify-center rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive group-hover/skillgroup:flex"
-                    >
-                      <X className="size-3.5" />
-                    </button>
-                  )}
-                </div>
-              )
-            })}
-            {edit && (
-              <button
-                type="button"
-                onClick={() =>
-                  edit.onProfileChange({
-                    skillGroups: [
-                      ...cv.skillGroups,
-                      { id: `skill-${Date.now().toString(36)}`, label: '', tags: [] },
-                    ],
-                  })
-                }
-                className="inline-flex items-center gap-1 rounded-full border border-dashed border-steel/40 px-3 py-1.5 text-xs font-medium text-steel-700 transition-colors hover:border-steel hover:bg-steel/10"
-              >
-                <Plus className="size-3" />
-                Add skill category
-              </button>
-            )}
-          </div>
-        </Section>
-
-        <Section title="Languages">
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-            {languages.map((l, index) => {
-              const set = edit
-                ? (patch: Partial<PublicLanguage>) => edit.languages.onItemChange(index, patch)
-                : undefined
-              const card = (
-                <div
-                  key={edit ? undefined : l.name}
-                  className={edit ? 'h-full rounded-xl bg-white p-4 shadow-sm shadow-navy/5' : 'rounded-xl bg-white p-4 shadow-sm shadow-navy/5'}
-                >
-                  {text(l.name, 'Language', set && ((name) => set({ name })), 'text-sm font-medium text-navy', 'p')}
-                  {text(l.level, 'Level', set && ((level) => set({ level })), 'mt-0.5 text-xs text-muted-foreground', 'p')}
-                </div>
-              )
-              return edit ? <div key={index}>{edit.languages.wrapItem(index, card)}</div> : card
-            })}
-            {edit?.languages.after}
-          </div>
-        </Section>
+        {layout.sections.map((section, index) => {
+          if (!edit && !section.visible) return null
+          const body =
+            section.kind === 'entries' ? renderEntries(section) : builtInBodies[section.kind]
+          const title = edit ? (
+            <EditableText
+              as="h2"
+              value={section.title}
+              label="Section title"
+              placeholder="Section title"
+              className="font-serif text-2xl tracking-tight text-navy"
+              onChange={(value) => edit.sections.onTitleChange(section.id, value)}
+            />
+          ) : (
+            <h2 className="font-serif text-2xl tracking-tight text-navy">{section.title}</h2>
+          )
+          return (
+            <Section
+              key={section.id}
+              id={`cv-section-${section.id}`}
+              title={title}
+              hidden={!section.visible}
+              toolbar={edit?.sections.toolbar(section, index)}
+            >
+              {body}
+            </Section>
+          )
+        })}
+        {edit?.sections.after}
       </div>
     </main>
   )

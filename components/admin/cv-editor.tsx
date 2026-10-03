@@ -20,10 +20,14 @@ import { focusItem, moveItem, newClientKey, useEditorState } from '@/components/
 import { saveCvPageAction } from '@/app/admin/editor-actions'
 import type { CvPdfChange } from '@/lib/validations'
 import type { SkillGroup } from '@/lib/queries'
+import type { CvEntry, CvLayout, CvSection } from '@/lib/site-content-shared'
 
 // /admin/cv: the public CV page rendered with the same component
 // (components/cv-view.tsx), in edit mode — including the "Download CV"
 // button, which is where the CV PDF is uploaded, replaced or removed.
+// Sections can be renamed (click the title), moved up/down, hidden, and
+// added ("Add section" at the bottom: an experience-style list such as
+// "Presentations & Research"); added sections can also be deleted.
 
 type Profile = {
   tagline: string
@@ -63,6 +67,7 @@ export type CvEditorData = {
   experience: Saved<ExperienceFields>[]
   education: Saved<EducationFields>[]
   languages: Saved<LanguageFields>[]
+  layout: CvLayout
   defaults: {
     experience: ExperienceFields[]
     education: EducationFields[]
@@ -80,6 +85,7 @@ type State = {
   experience: Row<ExperienceFields>[]
   education: Row<EducationFields>[]
   languages: Row<LanguageFields>[]
+  layout: CvLayout
 }
 
 function rowsFrom<T>(saved: Saved<T>[], defaults: T[], prefix: string, loadError: boolean): Row<T>[] {
@@ -104,6 +110,7 @@ function build(data: CvEditorData): State {
     experience: rowsFrom(data.experience, data.defaults.experience, 'experience', data.loadError),
     education: rowsFrom(data.education, data.defaults.education, 'education', data.loadError),
     languages: rowsFrom(data.languages, data.defaults.languages, 'language', data.loadError),
+    layout: data.layout,
   }
 }
 
@@ -207,6 +214,121 @@ export function CvEditor({ data }: { data: CvEditorData }) {
     }
   }
 
+  // ---- Sections (order, titles, visibility; entries of added sections)
+  const setSections = (update: (sections: CvSection[]) => CvSection[]) =>
+    setState((s) => ({ ...s, layout: { sections: update(s.layout.sections) } }))
+  const updateSection = (id: string, patch: Partial<CvSection>) =>
+    setSections((sections) => sections.map((section) => (section.id === id ? { ...section, ...patch } : section)))
+  const sectionCount = state.layout.sections.length
+
+  const sectionsEdit = {
+    onTitleChange: (id: string, title: string) => updateSection(id, { title }),
+    toolbar: (section: CvSection, index: number) => (
+      <ItemToolbar
+        itemLabel="section"
+        canMoveBack={index > 0}
+        canMoveForward={index < sectionCount - 1}
+        onMoveBack={() => {
+          setSections((sections) => moveItem(sections, index, index - 1))
+          focusItem(`cv-section-${section.id}`)
+        }}
+        onMoveForward={() => {
+          setSections((sections) => moveItem(sections, index, index + 1))
+          focusItem(`cv-section-${section.id}`)
+        }}
+        published={section.visible}
+        onTogglePublished={() => updateSection(section.id, { visible: !section.visible })}
+        // Built-in sections hold entries stored elsewhere, so they can be
+        // hidden but not deleted; added sections can be deleted.
+        onRemove={
+          section.kind === 'entries'
+            ? () => {
+                if (
+                  section.entries.length === 0 ||
+                  window.confirm(`Delete the “${section.title}” section and its ${section.entries.length} entr${section.entries.length === 1 ? 'y' : 'ies'}?`)
+                ) {
+                  setSections((sections) => sections.filter((s) => s.id !== section.id))
+                }
+              }
+            : undefined
+        }
+      />
+    ),
+    entries: (section: CvSection) => {
+      const setEntries = (update: (entries: CvEntry[]) => CvEntry[]) =>
+        setSections((sections) =>
+          sections.map((s) => (s.id === section.id ? { ...s, entries: update(s.entries) } : s)),
+        )
+      const entries = section.entries
+      return {
+        onItemChange: (index: number, patch: Partial<CvEntry>) =>
+          setEntries((list) => list.map((entry, i) => (i === index ? { ...entry, ...patch } : entry))),
+        wrapItem: (index: number, node: ReactNode) => {
+          const entry = entries[index]
+          return (
+            <EditableItem
+              id={`item-${entry.id}`}
+              published={entry.published}
+              highlighted={errorKey === entry.id}
+              toolbarClassName="-top-5 right-0 md:top-0 md:right-full md:mr-4 md:flex-col md:items-end"
+              toolbar={
+                <ItemToolbar
+                  itemLabel="entry"
+                  className="md:flex-col"
+                  canMoveBack={index > 0}
+                  canMoveForward={index < entries.length - 1}
+                  onMoveBack={() => setEntries((list) => moveItem(list, index, index - 1))}
+                  onMoveForward={() => setEntries((list) => moveItem(list, index, index + 1))}
+                  published={entry.published}
+                  onTogglePublished={() =>
+                    setEntries((list) => list.map((e, i) => (i === index ? { ...e, published: !e.published } : e)))
+                  }
+                  onRemove={() => setEntries((list) => list.filter((_, i) => i !== index))}
+                />
+              }
+            >
+              {node}
+            </EditableItem>
+          )
+        },
+        after: (
+          <AddItemButton
+            className="py-4"
+            onClick={() => {
+              const id = newClientKey('entry')
+              setEntries((list) => [
+                ...list,
+                { id, org: '', role: '', location: '', period: '', summary: '', details: [''], published: true },
+              ])
+              focusItem(`item-${id}`)
+            }}
+          >
+            <Plus className="size-4" />
+            Add entry
+          </AddItemButton>
+        ),
+      }
+    },
+    after: (
+      <div className="border-t border-border py-10">
+        <AddItemButton
+          className="w-full py-5"
+          onClick={() => {
+            const id = newClientKey('section')
+            setSections((sections) => [
+              ...sections,
+              { id, kind: 'entries', title: 'New section', visible: true, entries: [] },
+            ])
+            focusItem(`cv-section-${id}`)
+          }}
+        >
+          <Plus className="size-4" />
+          Add section
+        </AddItemButton>
+      </div>
+    ),
+  }
+
   const save = useCallback(async () => {
     setStatus({ kind: 'saving', message: state.pdf.kind === 'file' ? 'Uploading the CV PDF…' : 'Saving…' })
     try {
@@ -231,6 +353,21 @@ export function CvEditor({ data }: { data: CvEditorData }) {
       const bullets = (details: string[]) => details.map((d) => d.trim()).filter(Boolean)
 
       const result = await saveCvPageAction({
+        layout: {
+          sections: state.layout.sections.map((section) => ({
+            ...section,
+            title: section.title.trim(),
+            entries: section.entries.map((entry) => ({
+              ...entry,
+              org: entry.org.trim(),
+              role: entry.role.trim(),
+              location: entry.location.trim(),
+              period: entry.period.trim(),
+              summary: entry.summary.trim(),
+              details: bullets(entry.details),
+            })),
+          })),
+        },
         profile: {
           ...state.profile,
           skillGroups: state.profile.skillGroups
@@ -289,7 +426,9 @@ export function CvEditor({ data }: { data: CvEditorData }) {
           education={state.education}
           experience={state.experience}
           languages={state.languages}
+          layout={state.layout}
           edit={{
+            sections: sectionsEdit,
             onProfileChange: setProfile,
             contactSettings: (
               <SettingsPopover

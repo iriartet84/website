@@ -7,23 +7,25 @@ import {
   getPublishedLanguages,
   getCvProfile,
 } from '@/lib/queries'
+import { getCvLayout } from '@/lib/site-content'
 
 export const revalidate = 3600
 
 export const metadata: Metadata = {
   title: 'CV',
   description:
-    'Full curriculum vitae: education, professional experience, technical skills, and languages.',
+    'Full curriculum vitae: education, professional experience, presentations and research, technical skills, and languages.',
 }
 
 // The page body lives in components/cv-view.tsx, shared with the admin CV
 // editor (/admin/cv) so both always render the same layout.
 export default async function CvPage() {
-  const [experience, education, languages, cv] = await Promise.all([
+  const [experience, education, languages, cv, layout] = await Promise.all([
     getPublishedExperience(),
     getPublishedEducation(),
     getPublishedLanguages(),
     getCvProfile(),
+    getCvLayout(),
   ])
 
   return (
@@ -33,6 +35,7 @@ export default async function CvPage() {
       education={education}
       experience={experience}
       languages={languages}
+      layout={layout}
     />
   )
 }

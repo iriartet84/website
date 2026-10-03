@@ -336,18 +336,6 @@ export const experience = [
     ],
   },
   {
-    role: 'Policy Proposal',
-    org: 'European Commission',
-    location: 'Brussels, Belgium',
-    period: '11/2024',
-    summary: 'Designed agricultural reform for water stress in Cyprus',
-    details: [
-      'Designed incentive-compatible economic mechanisms — tiered pricing, elasticity-based incentives, behavioural nudges — to encourage crop diversification.',
-      'Quantified outcomes (20% evaporation reduction through destratification, 33.5% via monomolecular films) and presented the pilot to European Commission and Cyprus representatives.',
-      'Collaborated with an international team to design and pitch feasible agricultural investment.',
-    ],
-  },
-  {
     role: 'Intern — G77 Secretariat',
     org: 'United Nations',
     location: 'Vienna, Austria',
