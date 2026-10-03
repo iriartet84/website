@@ -166,14 +166,14 @@ export function ResearchShowcase({
   // while dragging, then the nearest card — or the next one, after a
   // decisive flick — is scrolled into place. A drag that moved suppresses
   // the click that ends it, so releasing over a card doesn't open it.
-  const drag = useRef<{ x: number; left: number; moved: boolean; pointerId: number } | null>(null)
+  const drag = useRef<{ x: number; left: number; moved: boolean; pointerId: number; startSlot: number } | null>(null)
   const suppressClick = useRef(false)
 
   function onPointerDown(event: PointerEvent<HTMLDivElement>) {
     if (editing || event.pointerType !== 'mouse' || event.button !== 0) return
     const scroller = scrollerRef.current
     if (!scroller) return
-    drag.current = { x: event.clientX, left: scroller.scrollLeft, moved: false, pointerId: event.pointerId }
+    drag.current = { x: event.clientX, left: scroller.scrollLeft, moved: false, pointerId: event.pointerId, startSlot: nearestSlot() }
     suppressClick.current = false
   }
 
@@ -211,8 +211,10 @@ export function ResearchShowcase({
     const dx = event.clientX - state.x
     // Nearest card to the centre now, nudged one further after a flick
     // that didn't quite reach it.
+    // (Compared with the card the drag started on — the selection has
+    // already followed the scroll by now.)
     let target = nearestSlot()
-    if (target === selectedSlot && Math.abs(dx) > 60) target = selectedSlot + (dx < 0 ? 1 : -1)
+    if (target === state.startSlot && Math.abs(dx) > 60) target = state.startSlot + (dx < 0 ? 1 : -1)
     target = Math.min(Math.max(target, 0), slotCount - 1)
     scroller.style.scrollSnapType = ''
     scroller.style.scrollBehavior = ''
@@ -350,88 +352,94 @@ export function ResearchShowcase({
         </div>
       </div>
 
-      <div
-        ref={scrollerRef}
-        data-carousel
-        className={cn(
-          'scrollbar-none relative mt-10 flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain scroll-smooth pb-2 transition-opacity duration-300',
-          !editing && 'cursor-grab data-[dragging=true]:cursor-grabbing data-[dragging=true]:select-none',
-          ready ? 'opacity-100' : 'opacity-0',
-        )}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={endDrag}
-        onPointerCancel={endDrag}
-        onClickCapture={(event) => {
-          if (suppressClick.current) {
-            event.preventDefault()
-            event.stopPropagation()
-            suppressClick.current = false
-          }
-        }}
-        onDragStart={(event) => event.preventDefault()}
-      >
-        {/* Without a loop (a single card), spacers let it reach the centre;
-            they're half of what a card leaves free at each breakpoint. */}
-        {!looping && <div aria-hidden className="shrink-0 basis-[6%] sm:basis-[15%] md:basis-[24%] lg:basis-[29%]" />}
-        {Array.from({ length: slotCount }, (_, slot) => {
-          const i = slot % sectionCount
-          const section = content.sections[i]
-          const isReal = Math.floor(slot / sectionCount) === (looping ? 1 : 0)
-          const category = paperCategoryForSection(section)
-          const href = category ? `/papers?category=${categoryParam(category)}` : '/papers'
-          const cardClass = cn(
-            'flex h-full w-full max-w-md flex-col overflow-hidden rounded-3xl bg-secondary transition-[transform,opacity] duration-500',
-            slot === selectedSlot ? 'opacity-100' : 'opacity-70',
-          )
-
-          let card: ReactNode
-          if (edit) {
-            card = isReal ? (
-              edit.wrapItem(section, i, <div className={cardClass}>{renderCardBody(section, i, true)}</div>)
-            ) : (
-              <div className={cardClass} inert>
-                {renderCardBody(section, i, false)}
-              </div>
+      {/* The carousel sits in the same centred, padded column as the rest
+          of the page, so it can never be wider than the viewport: the
+          scroller fills that column (min-w-0 so its row of cards can't
+          size it) and scrolls its cards inside it. */}
+      <div className="mx-auto mt-10 w-full max-w-6xl px-5 sm:px-8">
+        <div
+          ref={scrollerRef}
+          data-carousel
+          className={cn(
+            'scrollbar-none relative flex w-full min-w-0 max-w-full snap-x snap-mandatory overflow-x-auto overscroll-x-contain scroll-smooth pb-2 transition-opacity duration-300',
+            !editing && 'cursor-grab data-[dragging=true]:cursor-grabbing data-[dragging=true]:select-none',
+            ready ? 'opacity-100' : 'opacity-0',
+          )}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+          onClickCapture={(event) => {
+            if (suppressClick.current) {
+              event.preventDefault()
+              event.stopPropagation()
+              suppressClick.current = false
+            }
+          }}
+          onDragStart={(event) => event.preventDefault()}
+        >
+          {/* Without a loop (a single card), spacers let it reach the centre;
+              they're half of what a card leaves free at each breakpoint. */}
+          {!looping && <div aria-hidden className="shrink-0 basis-[6%] sm:basis-[15%] md:basis-[24%] lg:basis-[29%]" />}
+          {Array.from({ length: slotCount }, (_, slot) => {
+            const i = slot % sectionCount
+            const section = content.sections[i]
+            const isReal = Math.floor(slot / sectionCount) === (looping ? 1 : 0)
+            const category = paperCategoryForSection(section)
+            const href = category ? `/papers?category=${categoryParam(category)}` : '/papers'
+            const cardClass = cn(
+              'flex h-full w-full max-w-md flex-col overflow-hidden rounded-3xl bg-secondary transition-[transform,opacity] duration-500',
+              slot === selectedSlot ? 'opacity-100' : 'opacity-70',
             )
-          } else {
-            // The whole card is the link (no nested interactive elements
-            // inside it). Copies stay clickable but out of the tab order.
-            card = (
-              <Link
-                href={href}
-                aria-label={`${section.title} — explore related work${category ? ` in ${category}` : ''}`}
-                tabIndex={isReal ? undefined : -1}
-                className={cn(
-                  cardClass,
-                  'group focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-steel',
-                )}
-                onFocus={(event) => {
-                  // Keyboard focus only: a mouse press focuses the link
-                  // too, and scrolling then would fight a drag.
-                  if (event.currentTarget.matches(':focus-visible')) scrollToSlot(slot)
+
+            let card: ReactNode
+            if (edit) {
+              card = isReal ? (
+                edit.wrapItem(section, i, <div className={cardClass}>{renderCardBody(section, i, true)}</div>)
+              ) : (
+                <div className={cardClass} inert>
+                  {renderCardBody(section, i, false)}
+                </div>
+              )
+            } else {
+              // The whole card is the link (no nested interactive elements
+              // inside it). Copies stay clickable but out of the tab order.
+              card = (
+                <Link
+                  href={href}
+                  aria-label={`${section.title} — explore related work${category ? ` in ${category}` : ''}`}
+                  tabIndex={isReal ? undefined : -1}
+                  className={cn(
+                    cardClass,
+                    'group focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-steel',
+                  )}
+                  onFocus={(event) => {
+                    // Keyboard focus only: a mouse press focuses the link
+                    // too, and scrolling then would fight a drag.
+                    if (event.currentTarget.matches(':focus-visible')) scrollToSlot(slot)
+                  }}
+                >
+                  {renderCardBody(section, i, false)}
+                </Link>
+              )
+            }
+
+            return (
+              <article
+                key={`${section.id}-${slot}`}
+                ref={(node) => {
+                  itemRefs.current[slot] = node
                 }}
+                aria-hidden={isReal ? undefined : true}
+                className="flex min-w-0 shrink-0 grow-0 basis-[88%] snap-center justify-center px-3 sm:basis-[70%] md:basis-[52%] lg:basis-[42%]"
+                onFocusCapture={edit && isReal ? () => scrollToSlot(slot) : undefined}
               >
-                {renderCardBody(section, i, false)}
-              </Link>
+                {card}
+              </article>
             )
-          }
-
-          return (
-            <article
-              key={`${section.id}-${slot}`}
-              ref={(node) => {
-                itemRefs.current[slot] = node
-              }}
-              aria-hidden={isReal ? undefined : true}
-              className="flex min-w-0 shrink-0 grow-0 basis-[88%] snap-center justify-center px-3 sm:basis-[70%] md:basis-[52%] lg:basis-[42%]"
-              onFocusCapture={edit && isReal ? () => scrollToSlot(slot) : undefined}
-            >
-              {card}
-            </article>
-          )
-        })}
-        {!looping && <div aria-hidden className="shrink-0 basis-[6%] sm:basis-[15%] md:basis-[24%] lg:basis-[29%]" />}
+          })}
+          {!looping && <div aria-hidden className="shrink-0 basis-[6%] sm:basis-[15%] md:basis-[24%] lg:basis-[29%]" />}
+        </div>
       </div>
       <noscript>
         <style>{'#research-showcase [data-carousel]{opacity:1!important}'}</style>
