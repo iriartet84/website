@@ -103,6 +103,33 @@ export function ResearchShowcase({
     setSelectedSlot(nearestSlot())
   }, [looping, nearestSlot, sectionCount])
 
+  // Keep the cards square unless that would make "heading + card" taller
+  // than the screen: then shorten the image just enough. Measured from the
+  // real header and card text, so it adapts to fonts and copy length.
+  const headerRef = useRef<HTMLDivElement>(null)
+  const fitToScreen = useCallback(() => {
+    const scroller = scrollerRef.current
+    const header = headerRef.current
+    const card = itemRefs.current[middle]?.firstElementChild as HTMLElement | null | undefined
+    if (!scroller || !header || !card) return
+    const NAV = 96 // the fixed site nav (80px) plus a little air
+    const GAP = 40 // between the header and the cards (mt-10)
+    const BOTTOM = 16
+    const bodies = itemRefs.current.map(
+      (item) => item?.querySelector<HTMLElement>('[data-card-body]')?.offsetHeight ?? 0,
+    )
+    const available = window.innerHeight - NAV - header.offsetHeight - GAP - Math.max(...bodies) - BOTTOM
+    const square = card.offsetWidth
+    const height = Math.round(Math.min(square, Math.max(available, Math.min(square, 240))))
+    scroller.style.setProperty('--research-media-h', `${height}px`)
+  }, [middle])
+
+  useLayoutEffect(() => {
+    fitToScreen()
+    window.addEventListener('resize', fitToScreen)
+    return () => window.removeEventListener('resize', fitToScreen)
+  }, [fitToScreen, content.sections])
+
   // Start on the first card of the middle copy (and re-centre on the same
   // card if the number of cards changes).
   useLayoutEffect(() => {
@@ -225,7 +252,10 @@ export function ResearchShowcase({
   // copies render the public look.
   const renderCardBody = (section: HomeResearchSection, i: number, editable: boolean) => (
     <>
-      <div className="relative aspect-square overflow-hidden bg-navy">
+      {/* Square, as before — unless the screen is too short to show the
+          heading and a whole card at once; then it's only as much shorter
+          as needed (--research-media-h, measured by fitToScreen above). */}
+      <div className="relative h-[var(--research-media-h,100cqw)] overflow-hidden bg-navy">
         <img
           src={section.image || '/placeholder.svg'}
           alt=""
@@ -252,7 +282,7 @@ export function ResearchShowcase({
           </span>
         )}
       </div>
-      <div className="flex flex-1 flex-col p-6">
+      <div data-card-body className="flex flex-1 flex-col p-6">
         {edit && editable ? (
           <>
             <EditableText
@@ -299,7 +329,7 @@ export function ResearchShowcase({
       aria-label="Research focus areas"
       className="bg-white py-20 md:py-28"
     >
-      <div className="mx-auto max-w-6xl px-5 sm:px-8">
+      <div ref={headerRef} className="mx-auto max-w-6xl px-5 sm:px-8">
         <div className="flex items-end justify-between gap-6">
           <div>
             {edit ? (
@@ -352,94 +382,88 @@ export function ResearchShowcase({
         </div>
       </div>
 
-      {/* The carousel sits in the same centred, padded column as the rest
-          of the page, so it can never be wider than the viewport: the
-          scroller fills that column (min-w-0 so its row of cards can't
-          size it) and scrolls its cards inside it. */}
-      <div className="mx-auto mt-10 w-full max-w-6xl px-5 sm:px-8">
-        <div
-          ref={scrollerRef}
-          data-carousel
-          className={cn(
-            'scrollbar-none relative flex w-full min-w-0 max-w-full snap-x snap-mandatory overflow-x-auto overscroll-x-contain scroll-smooth pb-2 transition-opacity duration-300',
-            !editing && 'cursor-grab data-[dragging=true]:cursor-grabbing data-[dragging=true]:select-none',
-            ready ? 'opacity-100' : 'opacity-0',
-          )}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={endDrag}
-          onPointerCancel={endDrag}
-          onClickCapture={(event) => {
-            if (suppressClick.current) {
-              event.preventDefault()
-              event.stopPropagation()
-              suppressClick.current = false
-            }
-          }}
-          onDragStart={(event) => event.preventDefault()}
-        >
-          {/* Without a loop (a single card), spacers let it reach the centre;
-              they're half of what a card leaves free at each breakpoint. */}
-          {!looping && <div aria-hidden className="shrink-0 basis-[6%] sm:basis-[15%] md:basis-[24%] lg:basis-[29%]" />}
-          {Array.from({ length: slotCount }, (_, slot) => {
-            const i = slot % sectionCount
-            const section = content.sections[i]
-            const isReal = Math.floor(slot / sectionCount) === (looping ? 1 : 0)
-            const category = paperCategoryForSection(section)
-            const href = category ? `/papers?category=${categoryParam(category)}` : '/papers'
-            const cardClass = cn(
-              'flex h-full w-full max-w-md flex-col overflow-hidden rounded-3xl bg-secondary transition-[transform,opacity] duration-500',
-              slot === selectedSlot ? 'opacity-100' : 'opacity-70',
+      <div
+        ref={scrollerRef}
+        data-carousel
+        className={cn(
+          'scrollbar-none relative mt-10 flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain scroll-smooth pb-2 transition-opacity duration-300',
+          !editing && 'cursor-grab data-[dragging=true]:cursor-grabbing data-[dragging=true]:select-none',
+          ready ? 'opacity-100' : 'opacity-0',
+        )}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        onClickCapture={(event) => {
+          if (suppressClick.current) {
+            event.preventDefault()
+            event.stopPropagation()
+            suppressClick.current = false
+          }
+        }}
+        onDragStart={(event) => event.preventDefault()}
+      >
+        {/* Without a loop (a single card), spacers let it reach the centre;
+            they're half of what a card leaves free at each breakpoint. */}
+        {!looping && <div aria-hidden className="shrink-0 basis-[6%] sm:basis-[15%] md:basis-[24%] lg:basis-[29%]" />}
+        {Array.from({ length: slotCount }, (_, slot) => {
+          const i = slot % sectionCount
+          const section = content.sections[i]
+          const isReal = Math.floor(slot / sectionCount) === (looping ? 1 : 0)
+          const category = paperCategoryForSection(section)
+          const href = category ? `/papers?category=${categoryParam(category)}` : '/papers'
+          const cardClass = cn(
+            '@container flex h-full w-full max-w-md flex-col overflow-hidden rounded-3xl bg-secondary transition-[transform,opacity] duration-500',
+            slot === selectedSlot ? 'opacity-100' : 'opacity-70',
+          )
+
+          let card: ReactNode
+          if (edit) {
+            card = isReal ? (
+              edit.wrapItem(section, i, <div className={cardClass}>{renderCardBody(section, i, true)}</div>)
+            ) : (
+              <div className={cardClass} inert>
+                {renderCardBody(section, i, false)}
+              </div>
             )
-
-            let card: ReactNode
-            if (edit) {
-              card = isReal ? (
-                edit.wrapItem(section, i, <div className={cardClass}>{renderCardBody(section, i, true)}</div>)
-              ) : (
-                <div className={cardClass} inert>
-                  {renderCardBody(section, i, false)}
-                </div>
-              )
-            } else {
-              // The whole card is the link (no nested interactive elements
-              // inside it). Copies stay clickable but out of the tab order.
-              card = (
-                <Link
-                  href={href}
-                  aria-label={`${section.title} — explore related work${category ? ` in ${category}` : ''}`}
-                  tabIndex={isReal ? undefined : -1}
-                  className={cn(
-                    cardClass,
-                    'group focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-steel',
-                  )}
-                  onFocus={(event) => {
-                    // Keyboard focus only: a mouse press focuses the link
-                    // too, and scrolling then would fight a drag.
-                    if (event.currentTarget.matches(':focus-visible')) scrollToSlot(slot)
-                  }}
-                >
-                  {renderCardBody(section, i, false)}
-                </Link>
-              )
-            }
-
-            return (
-              <article
-                key={`${section.id}-${slot}`}
-                ref={(node) => {
-                  itemRefs.current[slot] = node
+          } else {
+            // The whole card is the link (no nested interactive elements
+            // inside it). Copies stay clickable but out of the tab order.
+            card = (
+              <Link
+                href={href}
+                aria-label={`${section.title} — explore related work${category ? ` in ${category}` : ''}`}
+                tabIndex={isReal ? undefined : -1}
+                className={cn(
+                  cardClass,
+                  'group focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-steel',
+                )}
+                onFocus={(event) => {
+                  // Keyboard focus only: a mouse press focuses the link
+                  // too, and scrolling then would fight a drag.
+                  if (event.currentTarget.matches(':focus-visible')) scrollToSlot(slot)
                 }}
-                aria-hidden={isReal ? undefined : true}
-                className="flex min-w-0 shrink-0 grow-0 basis-[88%] snap-center justify-center px-3 sm:basis-[70%] md:basis-[52%] lg:basis-[42%]"
-                onFocusCapture={edit && isReal ? () => scrollToSlot(slot) : undefined}
               >
-                {card}
-              </article>
+                {renderCardBody(section, i, false)}
+              </Link>
             )
-          })}
-          {!looping && <div aria-hidden className="shrink-0 basis-[6%] sm:basis-[15%] md:basis-[24%] lg:basis-[29%]" />}
-        </div>
+          }
+
+          return (
+            <article
+              key={`${section.id}-${slot}`}
+              ref={(node) => {
+                itemRefs.current[slot] = node
+              }}
+              aria-hidden={isReal ? undefined : true}
+              className="flex min-w-0 shrink-0 grow-0 basis-[88%] snap-center justify-center px-3 sm:basis-[70%] md:basis-[52%] lg:basis-[42%]"
+              onFocusCapture={edit && isReal ? () => scrollToSlot(slot) : undefined}
+            >
+              {card}
+            </article>
+          )
+        })}
+        {!looping && <div aria-hidden className="shrink-0 basis-[6%] sm:basis-[15%] md:basis-[24%] lg:basis-[29%]" />}
       </div>
       <noscript>
         <style>{'#research-showcase [data-carousel]{opacity:1!important}'}</style>
