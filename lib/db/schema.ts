@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm"
-import { pgTable, text, timestamp, boolean, serial, integer, jsonb } from "drizzle-orm/pg-core"
+import { pgTable, text, timestamp, boolean, serial, integer, jsonb, bigserial, date, index } from "drizzle-orm/pg-core"
 
 export const user = pgTable("user", {
   id: text("id").primaryKey(),
@@ -215,6 +215,50 @@ export const siteContent = pgTable("site_content", {
   value: jsonb("value").notNull(),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
 })
+
+// ---- Privacy-first analytics (lib/analytics/*, app/api/analytics, and
+// /admin/analytics). One row per accepted event from the public site's
+// tracker. No raw IP addresses, cookies or free-form visitor input are
+// stored: `visitorHash` is an HMAC of IP + user agent under a salt that
+// rotates daily and is then deleted (analytics_salts below), so it can only
+// link events within one day; `sessionId` is a random id chosen by the
+// server (30-minute inactivity gap). `referrerHost`/`channel` are copied
+// from the session's landing page view onto every later event of the same
+// session, so dashboard filters are plain WHERE clauses.
+export const analyticsEvents = pgTable(
+  "analytics_events",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    createdAt: timestamp("createdAt", { withTimezone: true }).notNull().defaultNow(),
+    sessionId: text("sessionId").notNull(),
+    visitorHash: text("visitorHash").notNull(),
+    type: text("type").notNull(), // pageview | click | scroll | engagement
+    name: text("name").notNull(), // allowlisted id (lib/analytics/events.ts)
+    label: text("label"),
+    path: text("path").notNull(),
+    target: text("target"),
+    referrerHost: text("referrerHost"),
+    channel: text("channel"),
+    country: text("country"),
+    device: text("device"),
+    value: integer("value"), // scroll depth % or engaged milliseconds
+  },
+  (table) => [
+    index("analytics_events_created_idx").on(table.createdAt),
+    index("analytics_events_session_idx").on(table.sessionId, table.createdAt),
+    index("analytics_events_visitor_idx").on(table.visitorHash, table.createdAt),
+    index("analytics_events_type_idx").on(table.type, table.createdAt),
+  ],
+)
+
+// Daily salt for visitorHash. Rows older than yesterday are deleted as soon
+// as a new day's salt is created, so old hashes can never be recomputed.
+export const analyticsSalts = pgTable("analytics_salts", {
+  day: date("day").primaryKey(),
+  salt: text("salt").notNull(),
+})
+
+export type AnalyticsEvent = typeof analyticsEvents.$inferSelect
 
 export type PaperEntry = typeof paperEntries.$inferSelect
 export type ProjectEntry = typeof projectEntries.$inferSelect

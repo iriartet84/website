@@ -3,6 +3,7 @@
 import { usePathname } from 'next/navigation'
 import { SiteNav } from '@/components/site-nav'
 import { SiteFooter } from '@/components/site-footer'
+import { AnalyticsTracker } from '@/components/analytics-tracker'
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
@@ -17,6 +18,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <SiteNav />
       {children}
       <SiteFooter />
+      {/* Public pages only: admin and login are never tracked. */}
+      <AnalyticsTracker />
     </>
   )
 }

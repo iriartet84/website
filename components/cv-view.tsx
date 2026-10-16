@@ -432,6 +432,8 @@ export function CvView({
               {cv.cvPdfUrl && (
                 <a
                   href={cv.cvPdfUrl}
+                  data-track="cv_download"
+                  data-track-label="Download CV"
                   className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-navy px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-navy-800"
                 >
                   <Download className="size-3.5" />

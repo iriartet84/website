@@ -1,4 +1,3 @@
-import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
 import { Inter, Fraunces } from 'next/font/google'
 import { AppShell } from '@/components/app-shell'
@@ -61,7 +60,6 @@ export default function RootLayout({
     <html lang="en" className={`light ${inter.variable} ${fraunces.variable}`}>
       <body className="antialiased font-sans">
         <AppShell>{children}</AppShell>
-        {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>
   )

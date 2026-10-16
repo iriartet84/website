@@ -83,6 +83,8 @@ export function CopyButton({
         onClick={copy}
         aria-label={`Copy ${label}: ${value}`}
         title={`Copy ${label}`}
+        data-track="contact_copy"
+        data-track-label={`Copy ${label}`}
         tabIndex={tabIndex}
         className={cn('cursor-copy', className)}
       >

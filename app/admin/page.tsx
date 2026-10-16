@@ -14,6 +14,7 @@ import { siteContent } from '@/lib/db/schema'
 import { isS3Configured } from '@/lib/blobs'
 import { outputHealth } from '@/lib/project-meta'
 import { parseProjectOutput } from '@/lib/project-output'
+import { pool } from '@/lib/db'
 
 // Admin overview: one card per editable public page. The editors themselves
 // live at /admin/home, /admin/papers, /admin/projects and /admin/cv.
@@ -63,7 +64,7 @@ export default async function AdminPage({
 }) {
   const { error } = await searchParams
 
-  const [papers, projects, experience, education, languages, cv, home] = await Promise.all([
+  const [papers, projects, experience, education, languages, cv, home, visits] = await Promise.all([
     safely(listAdminPapers, []),
     safely(listAdminProjects, []),
     safely(listAdminExperience, []),
@@ -81,6 +82,14 @@ export default async function AdminPage({
         )[0] ?? null,
       null,
     ),
+    safely(async () => {
+      const { rows } = await pool.query<{ views: string; sessions: string }>(
+        `SELECT count(*) FILTER (WHERE type = 'pageview') AS views,
+                count(DISTINCT "sessionId") FILTER (WHERE type = 'pageview') AS sessions
+           FROM analytics_events WHERE "createdAt" > now() - interval '7 days'`,
+      )
+      return { views: Number(rows[0].views), sessions: Number(rows[0].sessions) }
+    }, null),
   ])
 
   const cvEntries = experience.value.length + education.value.length + languages.value.length
@@ -158,6 +167,29 @@ export default async function AdminPage({
           </Link>
         ))}
       </div>
+
+      <Link
+        href="/admin/analytics"
+        className="group mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-2xl bg-white p-6 shadow-sm shadow-navy/5 transition-all hover:-translate-y-1 hover:shadow-lg hover:shadow-navy/10"
+      >
+        <div className="min-w-0 flex-1">
+          <h2 className="font-serif text-2xl tracking-tight text-navy transition-colors group-hover:text-steel-700">
+            Analytics
+          </h2>
+          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+            Who visits in aggregate, where they come from, which pages and research they engage with, and what they click.
+          </p>
+        </div>
+        <span className="text-xs text-muted-foreground">
+          {visits.failed
+            ? 'Not set up yet — run `npm run db:push` to create the analytics tables'
+            : `${visits.value?.views ?? 0} page view${visits.value?.views === 1 ? '' : 's'} · ${visits.value?.sessions ?? 0} session${visits.value?.sessions === 1 ? '' : 's'} in the last 7 days`}
+        </span>
+        <span className="inline-flex items-center gap-1 text-sm font-semibold text-steel-700 group-hover:text-navy">
+          Open analytics
+          <ArrowRight className="size-4" />
+        </span>
+      </Link>
 
       <p className="mt-12 text-xs text-muted-foreground">
         File storage:{' '}

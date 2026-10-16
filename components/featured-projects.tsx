@@ -223,7 +223,7 @@ function FeaturedPreview({ project, linked }: { project: PublicProject; linked: 
   const className =
     'group grid overflow-hidden rounded-3xl bg-secondary motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-500 md:grid-cols-5'
   return linked ? (
-    <Link href={`/projects/${project.slug}`} className={className}>
+    <Link href={`/projects/${project.slug}`} className={className} data-track-label={`Open project: ${project.title}`}>
       {body}
     </Link>
   ) : (

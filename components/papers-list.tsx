@@ -93,6 +93,7 @@ export function PaperArticle({ paper, edit }: { paper: PublicPaper; edit?: Paper
       ) : (
         <Link
           href={`/papers/${paper.slug}`}
+          data-track-label={`Open paper: ${paper.title}`}
           className="mt-4 block font-serif text-2xl leading-snug tracking-tight text-navy transition-colors hover:text-steel-700 md:text-3xl"
         >
           {paper.title}
@@ -134,6 +135,7 @@ export function PaperArticle({ paper, edit }: { paper: PublicPaper; edit?: Paper
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label="View repository on GitHub"
+                data-track-label={`GitHub repository: ${paper.title}`}
                 title="View repository on GitHub"
                 className="ml-auto inline-flex size-8 items-center justify-center rounded-full border border-border bg-white text-navy transition-colors hover:border-steel/40 hover:bg-secondary"
               >
@@ -142,6 +144,7 @@ export function PaperArticle({ paper, edit }: { paper: PublicPaper; edit?: Paper
             )}
             <Link
               href={`/papers/${paper.slug}`}
+              data-track-label={`Open paper: ${paper.title}`}
               className={cn(
                 'text-sm font-semibold text-steel-700 transition-colors hover:text-navy',
                 !paper.githubUrl && 'ml-auto',

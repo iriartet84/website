@@ -101,6 +101,7 @@ export function ProjectCard({ project, edit }: { project: PublicProject; edit?: 
             target="_blank"
             rel="noopener noreferrer"
             aria-label="View repository on GitHub"
+            data-track-label={`GitHub repository: ${project.title}`}
             title="View repository on GitHub"
             className="absolute right-4 top-4 z-10 inline-flex size-8 items-center justify-center rounded-full bg-white/90 text-navy backdrop-blur transition-colors hover:bg-white"
           >
@@ -283,7 +284,7 @@ export function ProjectCard({ project, edit }: { project: PublicProject; edit?: 
       {/* Covers the whole card so it's clickable anywhere; the GitHub
           button above sits in a later stacking position so it still gets
           its own clicks (see the repoLink `<a>` in the preview panel). */}
-      <Link href={`/projects/${project.slug}`} className="absolute inset-0" aria-label={project.title} />
+      <Link href={`/projects/${project.slug}`} className="absolute inset-0" aria-label={project.title} data-track-label={`Open project: ${project.title}`} />
       {body}
     </div>
   )

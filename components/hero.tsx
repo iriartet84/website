@@ -151,11 +151,11 @@ export function Hero({
               </>
             ) : (
               <>
-                <Link href="/projects" className={primaryClass}>
+                <Link href="/projects" className={primaryClass} data-track="cta" data-track-label={`Hero: ${content.primaryCta}`}>
                   {content.primaryCta}
                   <ArrowRight className="size-4" />
                 </Link>
-                <Link href="/papers" className={secondaryClass}>
+                <Link href="/papers" className={secondaryClass} data-track="cta" data-track-label={`Hero: ${content.secondaryCta}`}>
                   {content.secondaryCta}
                 </Link>
               </>

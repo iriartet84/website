@@ -433,6 +433,8 @@ export function ResearchShowcase({
               <Link
                 href={href}
                 aria-label={`${section.title} — explore related work${category ? ` in ${category}` : ''}`}
+                data-track="research_theme_open"
+                data-track-label={`Research focus: ${section.title}`}
                 tabIndex={isReal ? undefined : -1}
                 className={cn(
                   cardClass,

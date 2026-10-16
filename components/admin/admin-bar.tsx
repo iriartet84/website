@@ -13,6 +13,8 @@ export const adminPages = [
   { href: '/admin/papers', label: 'Papers & Briefs', publicHref: '/papers' },
   { href: '/admin/projects', label: 'Projects', publicHref: '/projects' },
   { href: '/admin/cv', label: 'CV', publicHref: '/cv' },
+  // Not an editor: private visitor statistics (app/admin/analytics).
+  { href: '/admin/analytics', label: 'Analytics', publicHref: '/' },
 ] as const
 
 export function AdminBar({ email }: { email: string }) {
